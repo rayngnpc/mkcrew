@@ -35,7 +35,8 @@ $script:Notes   = @()   # manual follow-ups to print at the end
 $PSMUX_RELEASE_URL = "https://github.com/rayngnpc/psmux-mk/releases/download/v3.3.6-mk/psmux-3.3.6-mk-win-x64.zip"
 $PSMUX_FORK_REPO   = "https://github.com/rayngnpc/psmux-mk"   # cargo fallback: cargo install --git
 $PSMUX_MIN_VER     = "3.3.6"
-$MKCREW_REPO       = "https://github.com/rayngnpc/mkcrew"   # remote source for the no-clone `irm | iex` one-liner
+$MKCREW_REPO       = "https://github.com/rayngnpc/mkcrew"   # the fork repo (docs / cargo-style refs)
+$MKCREW_TARBALL    = "https://github.com/rayngnpc/mkcrew/archive/refs/heads/main.tar.gz"   # git-FREE install source for the no-clone one-liner (a fresh box has no git)
 $BinDir            = Join-Path $env:LOCALAPPDATA "Programs\mkcrew\bin"
 
 # --- pretty output (tech-savvy, colour-coded, robust) -----------------------
@@ -163,27 +164,28 @@ if (Have "uv") {
 
 if ((Have "uv") -and -not $NoUv) {
     # uv tool-install builds an isolated, GLOBAL install + auto-provisions Python 3.12. Source: a local
-    # clone (editable, for dev) or straight from GitHub (the no-clone `irm | iex` one-liner).
-    $mkArgs = if ($FromClone) { @("--editable", $Root) } else { @("git+$MKCREW_REPO") }
-    $mkDesc = if ($FromClone) { "uv tool install --editable . --force" } else { "uv tool install git+$MKCREW_REPO --force" }
-    if (Have "mk") {
-        Ok "MKCREW already installed  (mk on PATH: $((Get-Command mk).Source))"
-        if (Ask "Reinstall/upgrade MKCREW?") {
-            Run $mkDesc { & uv tool install @mkArgs --force; & uv tool update-shell }
-        }
-    } else {
-        if (Ask "Install MKCREW now ($mkDesc ; pulls Python 3.12 + textual)?") {
-            if (Run $mkDesc { & uv tool install @mkArgs --force; & uv tool update-shell }) {
+    # clone (editable) or GitHub's TARBALL (no-clone one-liner). Tarball -- NOT git+ -- so a blank machine
+    # with no `git` still installs (uv needs system git for git+ sources; a fresh box has none).
+    $mkArgs = if ($FromClone) { @("--editable", $Root) } else { @("$MKCREW_TARBALL") }
+    $mkDesc = if ($FromClone) { "uv tool install --editable . --force" } else { "uv tool install <mkcrew tarball> --force" }
+    $already = [bool](Have "mk")
+    if ($already) { Ok "MKCREW already installed  (mk on PATH: $((Get-Command mk).Source))" }
+    $go = if ($already) { Ask "Reinstall/upgrade MKCREW?" } else { Ask "Install MKCREW now ($mkDesc ; pulls Python 3.12 + textual)?" }
+    if ($go) {
+        Run $mkDesc { & uv tool install @mkArgs --force; & uv tool update-shell }
+        # VERIFY the `mk` shim actually exists -- uv can print success yet fail (e.g. a git+ source with no
+        # git), and a native non-zero exit does NOT throw in PS 5.1. Trust the shim on disk, not the exit code.
+        if (-not $DryRun) {
+            $tb = (& uv tool dir --bin 2>$null | Out-String).Trim()
+            if ($tb -and (Test-Path (Join-Path $tb "mk.exe"))) {
+                Add-UserPath $tb                              # ensure uv's tool-bin (mk's home) is on PATH
                 Ok "MKCREW installed (uv). Uninstall later: uv tool uninstall mkcrew"
-            } else { $script:Missing += "mkcrew" }
-        } else { $script:Missing += "mkcrew" }
-    }
-    # `uv tool update-shell` proved unreliable on a fresh box (sandbox test: mk installed but not on PATH).
-    # Explicitly put uv's tool-bin (where the `mk` shim lives) on PATH -- the same robust Add-UserPath psmux uses.
-    if (-not $DryRun -and (Have "uv")) {
-        $tb = (& uv tool dir --bin 2>$null | Out-String).Trim()
-        if ($tb) { Add-UserPath $tb }
-    }
+            } else {
+                Bad "uv reported done but 'mk' was not produced -- the install did not complete."
+                $script:Missing += "mkcrew"
+            }
+        }
+    } elseif (-not $already) { $script:Missing += "mkcrew" }
 } else {
     # Fallback: venv + user PATH (needs a system Python).
     $venv = Join-Path $Root ".venv"; $scripts = Join-Path $venv "Scripts"; $py = Join-Path $scripts "python.exe"
