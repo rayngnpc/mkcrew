@@ -36,7 +36,7 @@ agent CLI (`claude`, `codex`, …) and run `mk studio`.
 ### 🛠 Clone + install (to develop it — editable)
 
 ```powershell
-git clone https://github.com/<owner>/mkcrew
+git clone https://github.com/rayngnpc/mkcrew
 cd mkcrew
 powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1    # or double-click install.bat
 ```
@@ -77,8 +77,5 @@ uv tool uninstall mkcrew
 
 ## Docs & credits
 
-- **Full architecture, rules, and contributor handoff:** [HANDOFF.md](HANDOFF.md)
 - **Built on** [psmux](https://crates.io/crates/psmux) (Windows tmux clone) — a separate tool, driven via its
   CLI, not vendored.
-
-> Replace `<owner>` above with the real GitHub path once this repo is pushed.
