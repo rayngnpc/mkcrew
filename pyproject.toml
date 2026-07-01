@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mkcrew"
+version = "0.0.1"
+description = "MKCREW — native-Windows event-sourced multi-agent CLI orchestrator on psmux"
+requires-python = ">=3.12"
+dependencies = ["textual>=0.80"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+app = ["pywebview>=5"]          # native-window desktop app (mk-app); falls back to the browser if absent
+
+[project.scripts]
+mk = "mkcrew.cli:main"
+mk-app = "mkcrew.app:main"
+mkd = "mkcrew.daemon:main"
+mk-finish-hook = "mkcrew.finish_hook:main"
+mk-done = "mkcrew.done_cli:main"
+mk-verify-team = "mkcrew.verify:main"
+mk-tui = "mkcrew.tui:main"
+mk-core-view = "mkcrew.coreview:coreview_main"
+mk-files-view = "mkcrew.filesview:filesview_main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+mkcrew = ["skills/**/*.md", "*.html"]

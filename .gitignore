@@ -1,0 +1,34 @@
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+scratch/
+.pytest_cache/
+.superpowers/
+.mkcrew/
+dist/
+build/
+*.spec
+# parked templates dropped from the supported set (dashboard); kept locally for future dev
+parked-templates/
+
+# local agent/tooling state; may contain machine-specific paths or session data
+.agents/
+.clau?e/
+.codex/
+.opencode/
+.sackysocky/
+.handoff/
+CL?UDE.md
+coordination/
+
+# local scratch and captured artifacts
+feedback/
+pictures/
+scratch_*.py
+uv.lock
+0
+
+# consolidated under MKCREW: the psmux fork (its own git repo) + all non-shipped/local material
+vendor/
+local/

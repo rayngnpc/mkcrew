@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MKCREW Studio</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Saira+Condensed:wght@400;500;600;700;800&display=swap');
+
+  :root{
+    /* BLUEPRINT HUD — deep-navy drafting ground, cyan line-art + soft glow, amber/lime accents.
+       Original variable NAMES are kept unchanged so every existing rule AND every inline
+       style/JS-generated style (which reference --text/--faint/--dim/--border2/etc.) still
+       resolves; only the VALUES + shapes change. New cy / am / lm tokens drive the HUD. */
+    --bg:#0a1628; --surface:#0d1e38; --surface2:#101f3a; --surface3:#15294a;
+    --border:rgba(53,224,255,.16); --border2:rgba(53,224,255,.34);
+    --text:#dcecff; --dim:#9ec1ea; --faint:#7e9fc8;
+    /* role / data accents (lead-dot, worker, reviewer, planner) */
+    --green:#35e0ff; --green-d:#16b9da; --blue:#5b8fff; --pink:#ff7bc4; --violet:#8b7bff;
+    --shadow:0 8px 30px rgba(0,0,0,.55);
+
+    /* cyan line-art ramp */
+    --cy:#35e0ff; --cy5:rgba(53,224,255,.5); --cy3:rgba(53,224,255,.3); --cy2:rgba(53,224,255,.2);
+    --cy15:rgba(53,224,255,.15); --cy08:rgba(53,224,255,.08); --cy04:rgba(53,224,255,.05);
+    /* amber (selected / launch) */
+    --am:#ffb14e; --am5:rgba(255,177,78,.5); --am3:rgba(255,177,78,.3); --am2:rgba(255,177,78,.2); --am08:rgba(255,177,78,.09);
+    /* lime (live / positive) */
+    --lm:#54ff9e; --lm4:rgba(84,255,158,.4);
+    /* blueprint grid line alphas — match the approved prototype (subtle) */
+    --grid:rgba(53,224,255,.02); --grid2:rgba(53,224,255,.007);
+
+    /* type — Saira Condensed = display/headings, JetBrains Mono = labels/data/body */
+    --serif:'JetBrains Mono','SFMono-Regular',Consolas,ui-monospace,monospace;
+    --head:'Saira Condensed','Arial Narrow','Oswald',sans-serif;
+    --mn:'JetBrains Mono','SFMono-Regular',Consolas,ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{
+    /* match the approved prototype: flat dark-navy ground + faint grid, NO radial glows */
+    background-color:var(--bg);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+      linear-gradient(var(--grid2) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid2) 1px, transparent 1px);
+    background-size:80px 80px,80px 80px,16px 16px,16px 16px;
+    background-repeat:repeat;
+    background-attachment:fixed;
+    color:var(--text);font-family:var(--serif);font-size:13.5px;line-height:1.55;-webkit-font-smoothing:antialiased;
+    overflow-x:hidden}
+  /* outer blueprint drawing frame + corner registration crosshairs (pure-CSS overlay) */
+  body::before{
+    content:'';position:fixed;inset:10px;pointer-events:none;z-index:10;
+    border:1.5px solid rgba(53,224,255,.10);
+    background-image:
+      url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='26'%20height='26'%20viewBox='0%200%2026%2026'%20fill='none'%20stroke='%2335e0ff'%20stroke-opacity='.42'%20stroke-width='1'%3E%3Ccircle%20cx='13'%20cy='13'%20r='7.5'/%3E%3Cline%20x1='13'%20y1='1'%20x2='13'%20y2='25'/%3E%3Cline%20x1='1'%20y1='13'%20x2='25'%20y2='13'/%3E%3C/svg%3E"),
+      url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='26'%20height='26'%20viewBox='0%200%2026%2026'%20fill='none'%20stroke='%2335e0ff'%20stroke-opacity='.42'%20stroke-width='1'%3E%3Ccircle%20cx='13'%20cy='13'%20r='7.5'/%3E%3Cline%20x1='13'%20y1='1'%20x2='13'%20y2='25'/%3E%3Cline%20x1='1'%20y1='13'%20x2='25'%20y2='13'/%3E%3C/svg%3E"),
+      url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='26'%20height='26'%20viewBox='0%200%2026%2026'%20fill='none'%20stroke='%2335e0ff'%20stroke-opacity='.42'%20stroke-width='1'%3E%3Ccircle%20cx='13'%20cy='13'%20r='7.5'/%3E%3Cline%20x1='13'%20y1='1'%20x2='13'%20y2='25'/%3E%3Cline%20x1='1'%20y1='13'%20x2='25'%20y2='13'/%3E%3C/svg%3E"),
+      url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='26'%20height='26'%20viewBox='0%200%2026%2026'%20fill='none'%20stroke='%2335e0ff'%20stroke-opacity='.42'%20stroke-width='1'%3E%3Ccircle%20cx='13'%20cy='13'%20r='7.5'/%3E%3Cline%20x1='13'%20y1='1'%20x2='13'%20y2='25'/%3E%3Cline%20x1='1'%20y1='13'%20x2='25'%20y2='13'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;
+    background-position:left 7px top 7px, right 7px top 7px, left 7px bottom 7px, right 7px bottom 7px;
+    background-size:26px 26px}
+  /* very subtle full-page scanlines */
+  body::after{
+    content:'';position:fixed;inset:0;pointer-events:none;z-index:9;
+    background:repeating-linear-gradient(0deg,transparent 0,transparent 3px,rgba(0,0,0,.05) 3px,rgba(0,0,0,.05) 4px)}
+  .mono{font-family:var(--mn)}
+  .i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;display:block}
+  .i-fill{width:15px;height:15px;fill:currentColor;stroke:none;display:inline-block;vertical-align:-2px}
+  .i-fill.star{width:12px;height:12px;color:var(--am)}
+  .app{max-width:1180px;margin:18px auto;padding:0 30px 140px;background:transparent;position:relative;z-index:1}
+  header{display:flex;align-items:flex-end;gap:16px;padding:16px 0 14px;position:sticky;top:0;z-index:14;background:var(--bg);border-bottom:1px solid var(--cy15);box-shadow:0 10px 22px -14px rgba(0,0,0,.9)}
+  .logo{display:flex;align-items:center;gap:13px}
+  .mark{width:42px;height:42px;border-radius:0;background:var(--cy08);display:grid;place-items:center;font-weight:800;font-size:21px;color:var(--cy);font-family:var(--head);border:1px solid var(--cy);box-shadow:0 0 14px var(--cy3),inset 0 0 12px rgba(53,224,255,.07);text-shadow:0 0 12px var(--cy3);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)}
+  .logo b{font-size:27px;font-family:var(--head);text-transform:uppercase;letter-spacing:.05em;font-weight:800;line-height:1.02;color:var(--cy);text-shadow:0 0 22px rgba(53,224,255,.5),0 0 44px rgba(53,224,255,.16)}
+  .logo b::after{content:"Compose and launch your AI coding team";display:block;font-family:var(--mn);font-style:normal;font-weight:400;font-size:9.5px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase;margin-top:4px}
+  .logo .sub{color:var(--dim);font-size:11px;font-family:var(--mn);margin-top:1px;letter-spacing:.04em}
+  .clis{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+  .pill{display:flex;align-items:center;gap:7px;background:var(--cy04);border:1px solid var(--cy15);border-radius:0;padding:5px 11px;font-size:11px;color:var(--dim);font-family:var(--mn);letter-spacing:.04em}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--faint)}
+  .pill.on{color:var(--text);border-color:var(--cy15)}.pill.on .dot{background:var(--lm);box-shadow:0 0 7px var(--lm),0 0 14px var(--lm4);animation:dotPulse 2.4s ease-in-out infinite}
+  .pill.off{opacity:.55;border-style:dashed;border-color:var(--cy15)}.pill.off .dot{background:var(--faint)}
+  h2.sec{font-size:15px;letter-spacing:.18em;text-transform:uppercase;color:var(--cy);margin:24px 0 13px;display:flex;align-items:center;gap:11px;font-family:var(--head);font-weight:700;border-bottom:1px solid var(--cy15);padding-bottom:8px;text-shadow:0 0 16px rgba(53,224,255,.3)}
+  h2.sec .n{width:24px;height:22px;border-radius:0;background:var(--cy08);border:1px solid var(--cy3);display:grid;place-items:center;color:var(--cy);font-size:11px;font-family:var(--head);font-weight:700;letter-spacing:.08em;clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,6px 100%,0 calc(100% - 6px))}
+  .grid{display:grid;grid-template-columns:1fr 290px;gap:22px;align-items:start}
+
+  /* ---- HUD panel: dark surface + thin cyan rule + 4-corner bracket frame ---- */
+  .card{background:var(--surface);border:1px solid var(--cy15);border-radius:0;position:relative;box-shadow:0 4px 22px rgba(0,0,0,.5),inset 0 0 30px rgba(53,224,255,.012)}.pad{padding:16px}
+  .card::before{content:'';position:absolute;inset:0;pointer-events:none;z-index:2;background:
+    linear-gradient(var(--cy),var(--cy)) top left/13px 1.5px no-repeat,
+    linear-gradient(var(--cy),var(--cy)) top left/1.5px 13px no-repeat,
+    linear-gradient(var(--cy),var(--cy)) bottom right/13px 1.5px no-repeat,
+    linear-gradient(var(--cy),var(--cy)) bottom right/1.5px 13px no-repeat,
+    linear-gradient(var(--cy5),var(--cy5)) top right/13px 1.5px no-repeat,
+    linear-gradient(var(--cy5),var(--cy5)) top right/1.5px 13px no-repeat,
+    linear-gradient(var(--cy5),var(--cy5)) bottom left/13px 1.5px no-repeat,
+    linear-gradient(var(--cy5),var(--cy5)) bottom left/1.5px 13px no-repeat}
+  .stepper{display:flex;align-items:center;gap:14px}
+  .stepper .b{width:38px;height:38px;border-radius:0;background:var(--cy08);border:1px solid var(--cy3);color:var(--cy);font-size:19px;font-family:var(--mn);font-weight:400;cursor:pointer;display:grid;place-items:center;clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px));transition:.16s}
+  .stepper .b:hover{background:var(--cy2);color:#fff;box-shadow:0 0 14px var(--cy3)}
+  .stepper .val{font-size:40px;font-weight:800;min-width:34px;text-align:center;font-family:var(--head);color:var(--cy);line-height:1;letter-spacing:-.01em;font-variant-numeric:tabular-nums;text-shadow:0 0 24px rgba(53,224,255,.45),0 0 50px rgba(53,224,255,.16)}.stepper .hint{color:var(--faint);font-size:12px;font-family:var(--mn);letter-spacing:.02em}
+  .roster{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .chip{display:flex;align-items:center;gap:9px;background:var(--cy04);border:1px solid var(--cy15);border-radius:0;padding:7px 12px;font-size:13px;font-family:var(--head);font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text);transition:.16s}
+  .chip:hover{border-color:var(--cy3);background:var(--cy08)}
+  .chip .av{width:9px;height:9px;border-radius:50%}
+  .av.lead{background:var(--green);box-shadow:0 0 8px var(--cy3)}.av.work{background:var(--blue);box-shadow:0 0 7px rgba(91,143,255,.4)}.av.rev{background:var(--pink);box-shadow:0 0 7px rgba(255,123,196,.4)}.av.plan{background:var(--violet);box-shadow:0 0 7px rgba(139,123,255,.4)}
+  .chip .prov{color:var(--dim);font-size:10px;border-left:1px solid var(--cy15);padding-left:9px;font-family:var(--mn);text-transform:uppercase;letter-spacing:.06em;font-weight:400}
+
+  /* ---- mini-cockpit preview: a DARK embedded HUD screen with scanlines + scan sweep ---- */
+  .ck{background:#030810;border:1px solid var(--cy15);border-radius:0;overflow:hidden;display:flex;flex-direction:column;position:relative}
+  .ck::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:5;background:repeating-linear-gradient(0deg,transparent 0,transparent 2px,rgba(0,0,0,.10) 2px,rgba(0,0,0,.10) 3px)}
+  .ck::before{content:'';position:absolute;top:0;left:0;right:0;height:1.5px;z-index:6;pointer-events:none;background:linear-gradient(90deg,transparent,var(--cy5),transparent);animation:ckScan 5s linear infinite}
+  .ck-bar{display:flex;align-items:center;gap:4px;background:#060e1c;border-bottom:1px solid rgba(53,224,255,.1);padding:3px 6px;position:relative;z-index:7}
+  .ck-bar .bm{background:var(--cy);color:#03101c;border-radius:0;padding:1px 4px;font-weight:800;font-size:7px;box-shadow:0 0 6px var(--cy3)}
+  .ck-bar .bt{color:rgba(120,170,220,.6);padding:1px 4px;font-size:7.5px;border-radius:0}
+  .ck-bar .bt.on{background:rgba(53,224,255,.16);color:var(--cy)}
+  .ck-bar .br{margin-left:auto;color:rgba(84,255,158,.8);font-size:7.5px;letter-spacing:.04em}
+  .ck-body{flex:1;display:flex;flex-direction:column;gap:3px;padding:4px;min-height:0;position:relative;z-index:7}
+  .ck-row{display:flex;gap:3px;flex:1;min-height:0}
+  .ck-col{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .cp{flex:1;border:1px solid rgba(53,224,255,.12);border-radius:0;background:#050c18;display:flex;align-items:center;justify-content:center;font-size:10.5px;color:rgba(120,170,220,.7);min-height:0;text-align:center;position:relative;font-family:var(--mn);letter-spacing:.06em;text-transform:uppercase}
+  .cp.lead{background:#071520;border-color:rgba(53,224,255,.32);color:rgba(120,200,255,.8)}
+  .cp.lead::after{content:'';position:absolute;top:3px;left:3px;width:4px;height:4px;border-radius:50%;background:var(--lm);box-shadow:0 0 5px var(--lm);animation:dotPulse 2s infinite}
+  .cp.core{background:#1c1405;border-color:var(--am3);color:rgba(255,177,78,.85)}
+  .cp.act{background:#0a1c30;border-color:rgba(53,224,255,.4);color:rgba(150,200,255,.9)}
+  .cp.zoom{position:absolute;inset:14%;z-index:8;background:#0a1c30;border-color:var(--cy);color:#cfeaff;box-shadow:0 6px 22px #000a,0 0 16px var(--cy3)}
+
+  .tpl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .tpl{background:rgba(13,30,56,.92);border:1px solid var(--cy15);border-radius:0;overflow:hidden;cursor:pointer;transition:transform .14s,box-shadow .14s,border-color .14s;position:relative}
+  .tpl::before{content:'';position:absolute;inset:0;pointer-events:none;z-index:3;background:
+    linear-gradient(var(--cy5),var(--cy5)) top left/11px 1.5px no-repeat,
+    linear-gradient(var(--cy5),var(--cy5)) top left/1.5px 11px no-repeat,
+    linear-gradient(var(--cy5),var(--cy5)) bottom right/11px 1.5px no-repeat,
+    linear-gradient(var(--cy5),var(--cy5)) bottom right/1.5px 11px no-repeat,
+    linear-gradient(var(--cy3),var(--cy3)) top right/11px 1.5px no-repeat,
+    linear-gradient(var(--cy3),var(--cy3)) top right/1.5px 11px no-repeat,
+    linear-gradient(var(--cy3),var(--cy3)) bottom left/11px 1.5px no-repeat,
+    linear-gradient(var(--cy3),var(--cy3)) bottom left/1.5px 11px no-repeat}
+  .tpl:hover{transform:translateY(-2px);border-color:var(--cy3);box-shadow:0 0 18px var(--cy15)}
+  .tpl.sel{border-color:var(--am);box-shadow:0 0 22px var(--am2)}
+  .tpl.sel::before{background:
+    linear-gradient(var(--am),var(--am)) top left/11px 1.5px no-repeat,
+    linear-gradient(var(--am),var(--am)) top left/1.5px 11px no-repeat,
+    linear-gradient(var(--am),var(--am)) bottom right/11px 1.5px no-repeat,
+    linear-gradient(var(--am),var(--am)) bottom right/1.5px 11px no-repeat,
+    linear-gradient(var(--am5),var(--am5)) top right/11px 1.5px no-repeat,
+    linear-gradient(var(--am5),var(--am5)) top right/1.5px 11px no-repeat,
+    linear-gradient(var(--am5),var(--am5)) bottom left/11px 1.5px no-repeat,
+    linear-gradient(var(--am5),var(--am5)) bottom left/1.5px 11px no-repeat}
+  .tpl.sel::after{content:'\2726';position:absolute;top:6px;right:9px;font-size:12px;color:var(--am);z-index:4;text-shadow:0 0 10px var(--am3)}
+  .tpl .ck{height:188px;border:0;border-bottom:1px solid var(--cy15);border-radius:0}
+  .tpl .tt{padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;background:transparent;position:relative;z-index:2}
+  .tpl .tt b{font-size:14px;font-family:var(--head);text-transform:uppercase;letter-spacing:.07em;color:var(--text);font-weight:700}.tpl.sel .tt b{color:var(--am)}.tpl .tt .tag{font-size:9px;color:var(--dim);border:1px solid var(--cy15);border-radius:0;padding:2px 7px;white-space:nowrap;font-family:var(--mn);text-transform:uppercase;letter-spacing:.05em}
+  .tpl .tt small{color:var(--dim);font-size:11px;display:block;font-weight:400;margin-top:3px;font-family:var(--mn);line-height:1.45}
+  .star{color:var(--am)}
+  .more{display:grid;place-items:center;color:var(--faint);min-height:160px;text-align:center;font-family:var(--mn);font-size:12px}
+  .tpl-group{grid-column:1/-1;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);font-weight:500;margin:10px 0 -3px;font-family:var(--mn);border-bottom:1px solid var(--cy15);padding-bottom:5px}
+  .tag.fit-best{color:var(--lm);border-color:var(--lm4)}
+  .tag.fit-ok{color:var(--cy);border-color:var(--cy3)}
+  .tag.fit-warn{color:var(--am);border-color:var(--am3)}
+  .tag.fit-dim{color:var(--faint)}
+
+  .modes{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  .mode{background:rgba(13,30,56,.92);border:1px solid var(--cy15);border-radius:0;padding:15px 14px;cursor:pointer;transition:.16s;position:relative;overflow:hidden}
+  .mode::before{content:'';position:absolute;inset:0;pointer-events:none;z-index:2;background:
+    linear-gradient(var(--cy5),var(--cy5)) top left/10px 1.5px no-repeat,
+    linear-gradient(var(--cy5),var(--cy5)) top left/1.5px 10px no-repeat,
+    linear-gradient(var(--cy5),var(--cy5)) bottom right/10px 1.5px no-repeat,
+    linear-gradient(var(--cy5),var(--cy5)) bottom right/1.5px 10px no-repeat,
+    linear-gradient(var(--cy3),var(--cy3)) top right/10px 1.5px no-repeat,
+    linear-gradient(var(--cy3),var(--cy3)) top right/1.5px 10px no-repeat,
+    linear-gradient(var(--cy3),var(--cy3)) bottom left/10px 1.5px no-repeat,
+    linear-gradient(var(--cy3),var(--cy3)) bottom left/1.5px 10px no-repeat}
+  .mode:hover{border-color:var(--cy3);box-shadow:0 0 14px var(--cy15)}.mode.sel{border-color:var(--am);box-shadow:0 0 18px var(--am2)}
+  .mode.sel::before{background:
+    linear-gradient(var(--am),var(--am)) top left/10px 1.5px no-repeat,
+    linear-gradient(var(--am),var(--am)) top left/1.5px 10px no-repeat,
+    linear-gradient(var(--am),var(--am)) bottom right/10px 1.5px no-repeat,
+    linear-gradient(var(--am),var(--am)) bottom right/1.5px 10px no-repeat,
+    linear-gradient(var(--am5),var(--am5)) top right/10px 1.5px no-repeat,
+    linear-gradient(var(--am5),var(--am5)) top right/1.5px 10px no-repeat,
+    linear-gradient(var(--am5),var(--am5)) bottom left/10px 1.5px no-repeat,
+    linear-gradient(var(--am5),var(--am5)) bottom left/1.5px 10px no-repeat}
+  .mode .ic{width:32px;height:32px;display:grid;place-items:center;background:var(--cy08);border:1px solid var(--cy3);color:var(--cy);clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px))}.mode .ic .i{width:18px;height:18px}.mode.sel .ic{color:var(--am);background:var(--am08);border-color:var(--am3);box-shadow:0 0 10px var(--am2)}.mode b{display:block;margin:11px 0 4px;font-size:16px;font-family:var(--head);text-transform:uppercase;letter-spacing:.07em;color:var(--text);font-weight:700}.mode.sel b{color:var(--am)}.mode p{color:var(--dim);font-size:11.5px;line-height:1.45;font-family:var(--mn)}
+
+  .side h3{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--cy);margin:0 0 11px;font-family:var(--head);font-weight:700;border-bottom:1px solid var(--cy15);padding-bottom:6px;display:flex;align-items:center;gap:9px}
+  .prof{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:0;cursor:pointer;border:1px solid transparent;transition:.16s}
+  .prof:hover{background:var(--cy04);border-color:var(--cy15)}.prof.act{background:var(--cy08);border:1px solid var(--cy3)}
+  .prof .pic{width:28px;height:28px;border-radius:0;background:var(--cy08);border:1px solid var(--cy3);display:grid;place-items:center;color:var(--cy);clip-path:polygon(0 0,calc(100% - 7px) 0,100% 7px,100% 100%,7px 100%,0 calc(100% - 7px))}.prof .pic .i{width:15px;height:15px}
+  .prof .meta{font-size:13px;font-family:var(--head);font-weight:700;letter-spacing:.04em;color:var(--text)}.prof .meta small{display:block;color:var(--faint);font-size:10.5px;font-family:var(--mn);font-weight:400;letter-spacing:.02em;margin-top:2px;text-transform:none}
+  .row-btns{display:flex;gap:7px;margin-top:11px}
+  .gbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:var(--cy04);border:1px solid var(--cy15);color:var(--dim);border-radius:0;padding:8px;font-size:11px;cursor:pointer;font-family:var(--mn);letter-spacing:.03em;transition:.16s}.gbtn:hover{color:var(--cy);background:var(--cy08);border-color:var(--cy3)}.gbtn .i{width:14px;height:14px}
+
+  .launch{position:fixed;left:0;right:0;bottom:0;background:transparent;padding:0;z-index:6}
+  .launch .inner{max-width:100%;margin:0;display:flex;align-items:center;gap:20px;background:rgba(6,12,28,.97);border:0;border-top:1px solid var(--cy3);border-radius:0;padding:14px 40px;box-shadow:0 -8px 34px rgba(0,0,0,.7),0 0 22px var(--cy08) inset}
+  .cmd{flex:1;color:var(--dim);font-size:13px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-family:var(--mn);letter-spacing:.03em;padding:10px 14px;background:rgba(0,0,0,.45);border:1px solid var(--cy15)}.cmd b{color:var(--cy);font-weight:700}
+  .go{display:inline-flex;align-items:center;gap:10px;background:linear-gradient(135deg,var(--am08),rgba(255,177,78,.03));color:var(--am);font-weight:800;border:1px solid var(--am);border-radius:0;padding:13px 30px;font-size:16px;font-family:var(--head);text-transform:uppercase;letter-spacing:.14em;cursor:pointer;clip-path:polygon(0 0,calc(100% - 13px) 0,100% 13px,100% 100%,13px 100%,0 calc(100% - 13px));box-shadow:0 0 20px var(--am2),inset 0 0 20px rgba(255,177,78,.04);transition:.16s}
+  .go:hover{box-shadow:0 0 36px rgba(255,177,78,.5);transform:translateY(-1px);color:#ffd9a3}
+  .stop{display:inline-flex;align-items:center;gap:8px;background:transparent;color:var(--dim);border:1px solid var(--cy15);border-radius:0;padding:13px 20px;font-size:13px;font-family:var(--head);text-transform:uppercase;letter-spacing:.1em;cursor:pointer;transition:.16s}
+  .stop:hover{border-color:#ff6b6b;color:#ff8a8a;box-shadow:0 0 16px rgba(255,68,68,.18)}
+  .stop .i{width:13px;height:13px}
+
+  .scrim{position:fixed;inset:0;background:rgba(3,7,20,.86);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:20}
+  .scrim.show{display:flex}
+  .modal{width:600px;max-width:94vw;max-height:90vh;overflow:auto;background:var(--surface);border:1px solid var(--cy3);border-radius:0;box-shadow:0 0 50px rgba(53,224,255,.1),0 40px 100px rgba(0,0,0,.9);animation:pop .16s ease-out;position:relative}
+  .modal::before{content:'';position:absolute;inset:0;pointer-events:none;z-index:10;background:
+    linear-gradient(var(--cy),var(--cy)) top left/18px 2px no-repeat,
+    linear-gradient(var(--cy),var(--cy)) top left/2px 18px no-repeat,
+    linear-gradient(var(--cy),var(--cy)) bottom right/18px 2px no-repeat,
+    linear-gradient(var(--cy),var(--cy)) bottom right/2px 18px no-repeat,
+    linear-gradient(var(--cy5),var(--cy5)) top right/18px 2px no-repeat,
+    linear-gradient(var(--cy5),var(--cy5)) top right/2px 18px no-repeat,
+    linear-gradient(var(--cy5),var(--cy5)) bottom left/18px 2px no-repeat,
+    linear-gradient(var(--cy5),var(--cy5)) bottom left/2px 18px no-repeat}
+  @keyframes pop{from{transform:translateY(10px) scale(.97);opacity:0}to{transform:none;opacity:1}}
+  .mhead{padding:16px 20px 14px;border-bottom:1px solid var(--cy15);background:rgba(53,224,255,.02);display:flex;align-items:flex-start;gap:12px;position:relative;z-index:1}
+  .mhead .ti{flex:1}.mhead h3{font-size:20px;font-family:var(--head);text-transform:uppercase;letter-spacing:.1em;color:var(--cy);font-weight:800;text-shadow:0 0 18px rgba(53,224,255,.32)}.mhead p{color:var(--dim);font-size:12px;margin-top:4px;font-family:var(--mn);line-height:1.5}
+  .x{background:var(--cy08);border:1px solid var(--cy3);color:var(--dim);width:30px;height:30px;border-radius:0;cursor:pointer;transition:.16s}.x:hover{background:rgba(255,68,68,.14);border-color:#ff4444;color:#ff6b6b}
+  .mbody{padding:16px 20px;position:relative;z-index:1}
+  .m-prev{height:188px;margin-bottom:8px}
+  .m-prev .ck{height:100%}
+  .m-cap{color:var(--faint);font-size:11px;text-align:center;margin-bottom:14px;font-family:var(--mn);letter-spacing:.04em}
+  .arow{display:grid;grid-template-columns:14px 1.1fr 94px 1.3fr 86px;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid rgba(53,224,255,.07)}
+  .arow input,.arow select{min-width:0;width:100%}
+  .arow input{background:rgba(53,224,255,.05);border:1px solid var(--cy15);color:var(--text);border-radius:0;padding:7px 9px;font-family:var(--mn);font-size:12px}
+  .arow .m-modelcell{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .arow .m-nothink{color:var(--faint);text-align:center;font-size:11px;font-family:var(--mn)}
+  .arow:last-child{border-bottom:0}.arow .av{width:9px;height:9px;border-radius:50%}
+  .arow .who b{font-size:14px;font-family:var(--head);letter-spacing:.05em;color:var(--text)}.arow .who small{color:var(--faint);font-size:11px;display:block;font-family:var(--mn)}
+  select{width:100%;background:rgba(53,224,255,.05);border:1px solid var(--cy15);color:var(--text);border-radius:0;padding:8px 10px;font-size:12px;font-family:var(--mn);cursor:pointer;transition:border-color .16s}
+  select:focus{border-color:var(--cy3);outline:none}
+  option{background:#0a1628;color:var(--text)}
+  .mfoot{padding:14px 20px 18px;display:flex;gap:10px;justify-content:space-between;align-items:center;border-top:1px solid var(--cy15);position:sticky;bottom:0;background:rgba(8,20,38,.96);z-index:1}
+  .mfoot .lyt{color:var(--faint);font-size:11.5px;font-family:var(--mn)}
+  .ghost{background:transparent;border:1px solid var(--cy15);color:var(--dim);border-radius:0;padding:9px 16px;cursor:pointer;font-family:var(--mn);font-size:11.5px;transition:.16s}
+  .ghost:hover{background:var(--cy08);color:var(--cy);border-color:var(--cy3)}
+  .confirm{display:inline-flex;align-items:center;gap:8px;background:var(--cy08);color:var(--cy);font-weight:800;border:1px solid var(--cy5);border-radius:0;padding:10px 22px;cursor:pointer;font-family:var(--head);text-transform:uppercase;letter-spacing:.1em;font-size:14px;clip-path:polygon(0 0,calc(100% - 9px) 0,100% 9px,100% 100%,9px 100%,0 calc(100% - 9px));box-shadow:0 0 14px var(--cy15);transition:.16s}.confirm:hover{background:var(--cy2);box-shadow:0 0 24px var(--cy3)}
+
+  /* save-profile prompt */
+  .toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%);background:rgba(8,20,38,.97);border:1px solid var(--cy3);border-radius:0;padding:12px 20px;font-size:12.5px;color:var(--text);box-shadow:0 0 24px var(--cy15),0 14px 40px rgba(0,0,0,.6);z-index:30;opacity:0;pointer-events:none;transition:opacity .2s;font-family:var(--mn);letter-spacing:.02em}
+  .toast.show{opacity:1}
+
+  /* folder-picker modal extras */
+  .chfolder-btn{display:flex;align-items:center;gap:6px;background:var(--cy08);border:1px solid var(--cy3);color:var(--cy);border-radius:0;padding:6px 12px;font-size:11px;cursor:pointer;white-space:nowrap;font-family:var(--mn);text-transform:uppercase;letter-spacing:.05em;transition:.16s}
+  .chfolder-btn:hover{color:#fff;background:var(--cy2);box-shadow:0 0 10px var(--cy3)}
+  .fp-path{font-family:var(--mn);font-size:12px;color:var(--text);word-break:break-all;margin-bottom:12px;padding:9px 11px;background:rgba(0,0,0,.4);border:1px solid var(--cy15);border-radius:0}
+  .fp-list{display:flex;flex-direction:column;gap:3px;max-height:320px;overflow-y:auto}
+  .fp-entry{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:0;cursor:pointer;font-size:13px;color:var(--text);border:1px solid transparent;font-family:var(--mn);transition:.16s}
+  .fp-entry:hover{background:var(--cy04);border-color:var(--cy15)}
+  .fp-entry.up{color:var(--dim)}
+  .fp-entry .fp-ic{color:var(--cy);opacity:.8;flex-shrink:0}
+
+  @keyframes dotPulse{0%,100%{opacity:1}50%{opacity:.45}}
+  @keyframes ckScan{0%{top:0;opacity:.9}100%{top:100%;opacity:.1}}
+  @media (prefers-reduced-motion: reduce){
+    .ck::before,.cp.lead::after,.pill.on .dot{animation:none}
+    .tpl{transition:none}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">
+      <div class="mark">M</div>
+      <div><b>MKCREW&nbsp;Studio</b><span id="ws-name" class="mono" style="display:none;margin-left:8px;padding:1px 8px;border-radius:6px;background:#2563eb;color:#fff;font-size:11px;font-weight:600;vertical-align:middle"></span><div class="sub mono" id="cwd-label">loading…</div></div>
+      <button class="chfolder-btn" id="btn-change-folder" title="Change project folder">
+        <svg class="i" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        Change folder
+      </button>
+    </div>
+    <div class="clis" id="clis-bar">
+      <!-- filled by renderClis() -->
+    </div>
+  </header>
+
+  <div class="grid">
+    <div>
+      <h2 class="sec"><span class="n">1</span>Team size</h2>
+      <div class="card pad">
+        <div class="stepper">
+          <button class="b" id="btn-dec">&#8211;</button>
+          <div class="val" id="count-val">4</div>
+          <button class="b" id="btn-inc">+</button>
+          <div class="hint" id="team-hint">agents — <b style="color:var(--text)">main</b> + 3 from the priority roster</div>
+        </div>
+        <div class="roster" id="roster">
+          <!-- filled by renderTeam() -->
+        </div>
+      </div>
+
+      <h2 class="sec"><span class="n">2</span>Layout template <span style="text-transform:none;letter-spacing:0;color:var(--faint)">— this is how the cockpit will look. Click to configure.</span></h2>
+      <div class="tpl-grid" id="gallery">
+        <!-- filled by renderTemplates() -->
+      </div>
+
+      <h2 class="sec"><span class="n">3</span>Core mode</h2>
+      <div class="modes" id="modes-grid">
+        <!-- filled by renderModes() -->
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="card pad">
+        <h3>Profiles</h3>
+        <div id="profiles-list">
+          <!-- filled by renderProfiles() -->
+        </div>
+        <div class="row-btns">
+          <button class="gbtn" id="btn-save-profile">
+            <svg class="i" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save
+          </button>
+          <button class="gbtn" id="btn-import-profile">
+            <svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Import
+          </button>
+          <button class="gbtn" id="btn-export-profile">
+            <svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Export
+          </button>
+        </div>
+      </div>
+      <div class="card pad" style="margin-top:14px">
+        <h3>Recent</h3>
+        <div style="color:var(--dim);font-size:12.5px;line-height:1.9" id="recent-list">
+          <div style="color:var(--faint);font-size:12px">No recent sessions yet.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="launch">
+  <div class="inner">
+    <div class="cmd mono" id="cmd-preview"><b>mk</b> start — …</div>
+    <button class="stop" id="btn-kill" title="Stop the running cockpit (mk kill)">
+      <svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+      Stop cockpit
+    </button>
+    <button class="go" id="btn-launch">
+      <svg class="i-fill" viewBox="0 0 24 24" style="width:15px;height:15px"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+      Launch cockpit
+    </button>
+  </div>
+</div>
+
+<!-- Config modal -->
+<div class="scrim" id="scrim" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="mhead">
+      <div class="ti"><h3 id="m-title">Configure</h3><p id="m-desc"></p></div>
+      <button class="x" onclick="closeModal()">&#10005;</button>
+    </div>
+    <div class="mbody">
+      <div class="m-prev" id="m-prev"></div>
+      <div class="m-cap" id="m-cap"></div>
+      <div id="m-agents">
+        <!-- filled by openModal() -->
+      </div>
+    </div>
+    <div class="mfoot">
+      <span class="lyt" id="m-foot"></span>
+      <span>
+        <button class="ghost" onclick="openModelsEditor()" title="Edit the model + thinking suggestions">&#9998; models</button>
+        <button class="ghost" onclick="closeModal()">Cancel</button>
+        <button class="confirm" onclick="confirmModal()">Confirm team</button>
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- Model-catalog editor modal -->
+<div class="scrim" id="em-scrim" onclick="if(event.target===this)closeModelsEditor()">
+  <div class="modal" style="width:560px">
+    <div class="mhead">
+      <div class="ti"><h3>Edit model list</h3><p>Suggestions for the model dropdowns. JSON: <code>models</code> = provider → [names], <code>thinking</code> = provider → [levels]. You can always type any model on an agent too.</p></div>
+      <button class="x" onclick="closeModelsEditor()">&#10005;</button>
+    </div>
+    <div class="mbody">
+      <textarea id="em-text" spellcheck="false" style="width:100%;height:300px;font-family:ui-monospace,monospace;font-size:12px;line-height:1.4;background:#06080c;color:var(--dim);border:1px solid var(--border2);border-radius:8px;padding:10px"></textarea>
+      <div id="em-err" style="color:#e87;font-size:12px;min-height:17px;margin-top:4px"></div>
+    </div>
+    <div class="mfoot">
+      <span class="lyt" style="font-size:11px;color:var(--faint)">saved to %LOCALAPPDATA%\mkcrew\models.json</span>
+      <span>
+        <button class="ghost" onclick="resetModelsEditor()" title="Discard customisations, use the built-in defaults">Reset to defaults</button>
+        <button class="ghost" onclick="closeModelsEditor()">Cancel</button>
+        <button class="confirm" onclick="saveModelsEditor()">Save</button>
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- Folder-picker modal -->
+<div class="scrim" id="fp-scrim" onclick="if(event.target===this)closeFolderPicker()">
+  <div class="modal" style="width:520px">
+    <div class="mhead">
+      <div class="ti"><h3>Change project folder</h3><p>Navigate into a subfolder, then click "Use this folder".</p></div>
+      <button class="x" onclick="closeFolderPicker()">&#10005;</button>
+    </div>
+    <div class="mbody">
+      <div class="fp-path" id="fp-path">…</div>
+      <div class="fp-list" id="fp-list">
+        <!-- filled by loadDirs() -->
+      </div>
+    </div>
+    <div class="mfoot">
+      <span class="lyt" id="fp-foot" style="font-size:11.5px;color:var(--faint)">Select a folder above</span>
+      <span>
+        <button class="ghost" onclick="closeFolderPicker()">Cancel</button>
+        <button class="confirm" id="fp-use-btn" onclick="useFolderPicker()">Use this folder</button>
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── mini-cockpit preview renderer ───────────────────────────────────────────
+// Matches the real branded cockpit (status bar + panes).
+const ckBar = (tabs, single) =>
+  `<div class="ck-bar"><span class="bm">M</span>${
+    single
+      ? `<span class="bt">mkcrew</span>`
+      : tabs.map((t,i)=>`<span class="bt${i===0?' on':''}">${t}</span>`).join('')
+  }<span class="br">&#9679; core: live</span></div>`;
+
+// (static CK_PREVIEWS removed — ckPreview below renders previews parametrically from STATE.count)
+
+// Mini cockpit preview that reflects the ACTUAL agent count (STATE.count) — so a template visibly
+// scales with the team instead of looking capped at a few panes. (Supersedes the static CK_PREVIEWS.)
+function ckPreview(key) {
+  const n = Math.max(1, STATE.count || 1);
+  const lbl = i => i === 0 ? 'main' : 'w' + i;
+  const cp = (t, c) => `<div class="cp${c ? ' ' + c : ''}">${t}</div>`;
+  const CORE = cp('core', 'core');
+  const cells = (from, to, max) => {                       // agent cells from..to, capped (+N overflow)
+    const out = [], end = Math.min(to, from + (max || 99));
+    for (let i = from; i < end; i++) out.push(cp(lbl(i), i === 0 ? 'lead' : ''));
+    if (to > end) out.push(cp('+' + (to - end)));
+    return out;
+  };
+  const grid = items => {
+    const cols = Math.ceil(Math.sqrt(items.length));
+    return `<div class="ck-body" style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:2px">${items.join('')}</div>`;
+  };
+  const ptabs = (k, label, cap) => {                       // page/agent tabs with +N overflow
+    const t = []; for (let p = 0; p < Math.min(k, cap); p++) t.push(label(p)); if (k > cap) t.push('+' + (k - cap)); return t;
+  };
+  switch (key) {
+    case 'tiled':
+      return ckBar([], true) + grid([...cells(0, n, 15), CORE]);
+    case 'even-horizontal':                                   // SIDE BY SIDE: agents as side-by-side columns on top, one full-width core strip below
+      return ckBar([], true) + `<div class="ck-body">` +
+        `<div class="ck-row">${cells(0, n, 12).join('')}</div>` +
+        `<div class="ck-row" style="flex:0 0 28%">${CORE}</div></div>`;
+    case 'even-vertical':
+      return ckBar([], true) + `<div class="ck-body">${[...cells(0, n, 10), CORE].map(c => `<div class="ck-row">${c}</div>`).join('')}</div>`;
+    case 'main-vertical':                                     // LEAD LEFT: main (big) over a small core on the left; workers stack down the right
+      return ckBar([], true) + `<div class="ck-body"><div class="ck-row">` +
+        `<div class="ck-col" style="flex:1.5">` +
+          `<div class="ck-row" style="flex:2">${cp('main · lead', 'lead')}</div>` +
+          `<div class="ck-row" style="flex:1">${CORE}</div></div>` +
+        `<div class="ck-col" style="flex:1">${cells(1, n, 8).join('')}</div></div></div>`;
+    case 'main-horizontal':
+      return ckBar([], true) + `<div class="ck-body">` +
+        `<div class="ck-row" style="flex:1.8">${cp('main · lead', 'lead')}</div>` +
+        `<div class="ck-row" style="flex:1">${[...cells(1, n, 10), CORE].join('')}</div></div>`;
+    case 'hub':
+      return ckBar(ptabs(n, lbl, 4)) + `<div class="ck-body">` +
+        `<div class="ck-row" style="flex:2.4">${cp('main · lead', 'lead')}</div>` +
+        `<div class="ck-row" style="flex:1">${cp('core · control tower', 'core')}</div></div>`;
+    case 'pages': {                                          // tabs + agents GRID over a full-width core strip
+      const m = Math.min(n, 6), cols = Math.ceil(Math.sqrt(m));
+      return ckBar(ptabs(Math.ceil(n / 6), p => 'page ' + (p + 1), 4)) +
+        `<div class="ck-body">` +
+          `<div style="flex:1;display:grid;grid-template-columns:repeat(${cols},1fr);gap:3px;min-height:0">${cells(0, m).join('')}</div>` +
+          `<div class="ck-row" style="flex:0 0 22%">${cp('core · control tower', 'core')}</div>` +
+        `</div>`;
+    }
+    case 'lead-left-ide':                                     // LEAD LEFT + Files IDE: agent CLIs stack on the left; one wide files-IDE (core | explorer | editor) on the right
+      return ckBar([], true) + `<div class="ck-body"><div class="ck-row">` +
+        `<div class="ck-col" style="flex:1">${[cp('main · lead', 'lead'), ...cells(1, n, 6)].join('')}</div>` +
+        `<div class="ck-col" style="flex:2.4"><div class="ck-row">` +
+          `${cp('core', 'core')}${cp('explorer')}${cp('editor', 'act')}</div></div></div></div>`;
+    default:
+      return ckBar([], true) + `<div class="ck-body"><div class="ck-row">${cp('main', 'lead')}${CORE}</div></div>`;
+  }
+}
+
+// ── mode icons ───────────────────────────────────────────────────────────────
+const MODE_ICONS = {
+  standard: `<svg class="i" viewBox="0 0 24 24"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>`,
+  fast:     `<svg class="i" viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>`,
+};
+
+const PROFILE_ICON = `<svg class="i" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
+
+// ── agent role → avatar class ────────────────────────────────────────────────
+function avClass(role) {
+  if (!role) return 'work';
+  if (role === 'main') return 'lead';
+  if (role.includes('rev')) return 'rev';
+  if (role.includes('plan')) return 'plan';
+  return 'work';
+}
+
+// ── global state ─────────────────────────────────────────────────────────────
+const api = (path, opts) => fetch(path, opts).then(r => r.json());
+let STATE = {
+  count: 4,
+  layout: 'hub',
+  mode: 'standard',
+  clis: {},
+  providers: [],       // per-agent provider strings, indexed by agent position
+  models: [],          // per-agent model overrides ('' = provider default)
+  efforts: [],         // per-agent thinking/reasoning level ('' = default; only claude/codex)
+  providerModels: {},  // provider -> [model suggestions]  (from /api/clis)
+  providerThinking: {},// provider -> [thinking levels]    (from /api/clis; absent = no toggle)
+  agents: [],          // from /api/config
+  templates: [],       // from /api/templates
+  modes: [],           // from /api/modes
+  profiles: [],        // from /api/profiles
+};
+// track which template is selected (key string)
+let _selTemplate = 'hub';
+// modal state
+let _modalKey = 'hub';
+let _modalSelects = [];  // <select> elements in modal agent rows
+
+// ── command preview ──────────────────────────────────────────────────────────
+function updateCmdPreview() {
+  const provStr = STATE.providers.slice(0, STATE.count).join('/') || 'claude';
+  const txt = document.getElementById('cmd-preview');
+  txt.innerHTML = `<b>mk</b> start &mdash; ${STATE.count} agent${STATE.count!==1?'s':''} &middot; ${STATE.layout} &middot; ${STATE.mode} &middot; ${provStr}`;
+}
+
+// ── render: CLI pills ────────────────────────────────────────────────────────
+function renderClis(clis) {
+  const bar = document.getElementById('clis-bar');
+  bar.innerHTML = Object.entries(clis).map(([name, on]) =>
+    `<span class="pill ${on?'on':'off'}"><span class="dot"></span>${name}</span>`
+  ).join('');
+}
+
+// ── render: template gallery ─────────────────────────────────────────────────
+const STAR_SVG = ` <svg class="i-fill star" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
+function _aspect() {                                    // monitor shape from the browser window
+  const r = window.innerWidth / window.innerHeight;
+  return r >= 1.5 ? 'wide' : r <= 0.9 ? 'tall' : 'square';
+}
+// score a template for the current agent count + screen shape — higher = better fit
+function _fitOf(tpl, count, aspect) {
+  const min = tpl.min || 1, max = tpl.max || 20;
+  let score, badge, cls;
+  if (count >= min && count <= max) {
+    score = 100 - Math.abs(count - (min + max) / 2);    // central in range = best
+    badge = `fits ${count}`; cls = 'ok';
+  } else if (count > max) {
+    score = 30 - (count - max) * 5;                      // too many -> cramped
+    badge = 'tight'; cls = 'warn';
+  } else {
+    score = 25 - (min - count) * 4;                      // built for bigger teams
+    badge = `for ${min}+`; cls = 'dim';
+  }
+  if (tpl.screen) {                                      // screen-shape preference
+    if (tpl.screen === aspect) { score += 30; if (cls === 'ok') cls = 'best'; }
+    else if (aspect !== 'square') { score -= 12; }
+  }
+  return { score, badge, cls };
+}
+// Gallery sections, in display order — mirrors the registry groups (templates.py: NORMAL/EXPERIMENTAL).
+const _GROUP_ORDER = ['normal', 'experimental'];
+const _GROUP_LABEL = { normal: 'Normal', experimental: 'Experimental' };
+// Section the gallery into a Normal + an Experimental group (registry `tpl.group`); fit-sort by
+// STATE.count + the monitor shape WITHIN each group; star the single best-fit card overall.
+function renderTemplates(templates) {
+  const gallery = document.getElementById('gallery');
+  gallery.innerHTML = '';
+  const count = STATE.count, aspect = _aspect();
+  const scored = templates.map(t => ({ t, f: _fitOf(t, count, aspect) }));
+  // the overall best fit gets the ★ and is the recommended key the stepper auto-selects
+  const best = scored.reduce((a, b) => (b && b.f.score > a.f.score ? b : a), scored[0]);
+  const bestKey = best ? best.t.key : null;
+  _GROUP_ORDER.forEach(group => {
+    const inGroup = scored.filter(s => (s.t.group || 'normal') === group)
+                          .sort((a, b) => b.f.score - a.f.score);
+    if (!inGroup.length) return;
+    const cap = document.createElement('div');
+    cap.className = 'tpl-group';
+    cap.textContent = `${_GROUP_LABEL[group] || group} · sorted for ${count} agent${count !== 1 ? 's' : ''} · ${aspect} screen`;
+    gallery.appendChild(cap);
+    inGroup.forEach(({ t: tpl, f }) => {
+      const key = tpl.key, name = tpl.name || key, desc = tpl.desc || '';
+      const el = document.createElement('div');
+      el.className = 'tpl' + (key === _selTemplate ? ' sel' : '');
+      el.dataset.key = key;
+      el.onclick = () => openModal(key);
+      el.innerHTML =
+        `<div class="ck">${ckPreview(key)}</div>` +
+        `<div class="tt"><div><b>${name}${key === bestKey ? STAR_SVG : ''}</b><small>${desc}</small></div>` +
+        `<span class="tag fit-${f.cls}">${f.badge}</span></div>`;
+      gallery.appendChild(el);
+    });
+  });
+  return bestKey;          // the recommended (best-fit) key
+}
+
+// ── render: mode cards ───────────────────────────────────────────────────────
+function renderModes(modes) {
+  const grid = document.getElementById('modes-grid');
+  grid.innerHTML = '';
+  modes.forEach((m, i) => {
+    const el = document.createElement('div');
+    el.className = 'mode' + (i === 0 ? ' sel' : '');
+    el.dataset.key = m.key;
+    el.onclick = () => selectMode(m.key);
+    const icon = MODE_ICONS[m.key] || MODE_ICONS.standard;
+    el.innerHTML = `<div class="ic">${icon}</div><b>${m.name}</b><p>${m.desc}</p>`;
+    grid.appendChild(el);
+  });
+  if (modes.length > 0) STATE.mode = modes[0].key;
+}
+
+function selectMode(key) {
+  STATE.mode = key;
+  document.querySelectorAll('#modes-grid .mode').forEach(el => {
+    el.classList.toggle('sel', el.dataset.key === key);
+  });
+  updateCmdPreview();
+}
+
+// ── render: team stepper + roster ────────────────────────────────────────────
+function renderTeam() {
+  document.getElementById('count-val').textContent = STATE.count;
+  const others = STATE.count - 1;
+  document.getElementById('team-hint').innerHTML =
+    `agents &mdash; <b style="color:var(--text)">main</b> + ${others} from the priority roster`;
+
+  const roster = document.getElementById('roster');
+  roster.innerHTML = '';
+  for (let i = 0; i < STATE.count; i++) {
+    const agent = STATE.agents[i] || {role: i===0?'main':'opus'+(i), provider:'claude'};
+    const role  = agent.role || (i===0?'main':'agent'+i);
+    const prov  = STATE.providers[i] || agent.command || agent.provider || 'claude';
+    const chip  = document.createElement('div');
+    chip.className = 'chip';
+    chip.innerHTML = `<span class="av ${avClass(role)}"></span>${role}<span class="prov">${prov}</span>`;
+    roster.appendChild(chip);
+  }
+  updateCmdPreview();
+}
+
+// ── render: profiles sidebar ─────────────────────────────────────────────────
+function renderProfiles(profs) {
+  STATE.profiles = profs;
+  const list = document.getElementById('profiles-list');
+  if (!profs.length) {
+    list.innerHTML = `<div style="color:var(--faint);font-size:12px;padding:4px 0">No saved profiles.</div>`;
+    return;
+  }
+  list.innerHTML = profs.map((p, i) =>
+    `<div class="prof ${i===0?'act':''}" data-idx="${i}" onclick="loadProfile(${i})">` +
+      `<div class="pic">${PROFILE_ICON}</div>` +
+      `<div class="meta">${p.name}<small>${p.count} agent${p.count!==1?'s':''} &middot; ${p.layout} &middot; ${p.providers?p.providers.join('/'):'claude'}</small></div>` +
+    `</div>`
+  ).join('');
+}
+
+// ── profile serialize / apply (shared by Save · Load · Import · Export) ───────
+// profileFromState: the CURRENT full config as one portable object — count, layout, mode,
+// per-agent providers/models/efforts, AND the workspace name. profileToState: the inverse,
+// loading such an object back into STATE. Both are DOM-free so the round-trip is lossless
+// and unit-testable; applyStateToUI() repaints the visible controls afterwards.
+function profileFromState(name) {
+  const n = STATE.count;
+  return {
+    name,
+    count:  STATE.count,
+    layout: STATE.layout,
+    mode:   STATE.mode,
+    providers: STATE.providers.slice(0, n),
+    models:    STATE.models.slice(0, n),
+    efforts:   STATE.efforts.slice(0, n),
+    wsName:    STATE.name || '',
+  };
+}
+function profileToState(p) {
+  if (!p || typeof p !== 'object' || Array.isArray(p)) return false;
+  STATE.count  = Math.max(2, Math.min(Number(p.count) || STATE.count, 4));   // clamp 2-4
+  STATE.layout = p.layout || STATE.layout;
+  if (p.mode) STATE.mode = p.mode;
+  STATE.providers = Array.isArray(p.providers) ? p.providers.slice() : STATE.providers;
+  // absent per-agent arrays -> reset to provider defaults (never carry the previous team's over)
+  STATE.models    = Array.isArray(p.models)    ? p.models.slice()    : [];
+  STATE.efforts   = Array.isArray(p.efforts)   ? p.efforts.slice()   : [];
+  if (p.wsName != null) STATE.name = p.wsName;
+  return true;
+}
+function applyStateToUI() {
+  renderTeam();
+  renderTemplates(STATE.templates);
+  selectTemplate(STATE.layout);
+  selectMode(STATE.mode);
+  const wsEl = document.getElementById('ws-name');
+  if (STATE.name) { wsEl.textContent = STATE.name; wsEl.style.display = ''; }
+  else { wsEl.style.display = 'none'; }
+}
+
+function loadProfile(idx) {
+  if (!profileToState(STATE.profiles[idx])) return;
+  // highlight active
+  document.querySelectorAll('#profiles-list .prof').forEach((el,i) => {
+    el.classList.toggle('act', i === idx);
+  });
+  applyStateToUI();     // restore the FULL config (count, layout, mode, per-agent fields, name)
+}
+
+function selectTemplate(key) {
+  _selTemplate = key;
+  document.querySelectorAll('#gallery .tpl[data-key]').forEach(el => {
+    el.classList.toggle('sel', el.dataset.key === key);
+  });
+  STATE.layout = key;
+  updateCmdPreview();
+}
+
+// ── modal ────────────────────────────────────────────────────────────────────
+function _esc(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+function _modelCell(i, provider, cur) {                 // per-CLI model <select> + a 'custom…' overflow box
+  const models = STATE.providerModels[provider] || [];
+  const isCustom = !!cur && !models.includes(cur);
+  const opts = `<option value="">default model</option>` +
+    models.map(m => `<option value="${_esc(m)}" ${m===cur?'selected':''}>${_esc(m)}</option>`).join('') +
+    `<option value="__custom__" ${isCustom?'selected':''}>custom…</option>`;
+  return `<select class="m-model" data-idx="${i}">${opts}</select>` +
+         `<input class="m-model-x" placeholder="model id" value="${isCustom?_esc(cur):''}" ${isCustom?'':'hidden'}>`;
+}
+function _bindModelCell(cell) {                          // reveal the text box only when 'custom…' is chosen
+  const sel = cell.querySelector('.m-model'), inp = cell.querySelector('.m-model-x');
+  sel.onchange = () => { if (sel.value === '__custom__') { inp.hidden = false; inp.focus(); } else inp.hidden = true; };
+}
+function _readModel(cell) {
+  const sel = cell.querySelector('.m-model'), inp = cell.querySelector('.m-model-x');
+  return sel.value === '__custom__' ? (inp.value || '').trim() : sel.value;
+}
+function _thinkControl(i, provider, cur) {              // thinking <select> for claude/codex; else '—'
+  const lv = STATE.providerThinking[provider] || [];
+  if (!lv.length) return `<span class="m-nothink" data-idx="${i}">—</span>`;
+  return `<select class="m-think" data-idx="${i}"><option value="">think: auto</option>` +
+    lv.map(l => `<option value="${l}" ${l===cur?'selected':''}>${l}</option>`).join('') + `</select>`;
+}
+
+async function openModal(key) {
+  // re-fetch detected CLIs + the model/thinking catalog so the dropdowns are never stale
+  try {
+    const c = await (await fetch('/api/clis')).json();
+    STATE.clis = c.clis || STATE.clis;
+    STATE.providerModels = c.models || STATE.providerModels;
+    STATE.providerThinking = c.thinking || STATE.providerThinking;
+    renderClis(STATE.clis);
+  } catch (e) {}
+  selectTemplate(key);
+  _modalKey = key;
+
+  const tpl = STATE.templates.find(t => t.key === key) || {key, name: key, tag:'', desc:''};
+  document.getElementById('m-title').textContent = 'Configure: ' + (tpl.name || key);
+  document.getElementById('m-desc').textContent  = "Assign a provider, model, and thinking level to each pane.";
+  document.getElementById('m-prev').innerHTML    = `<div class="ck">${ckPreview(key)}</div>`;
+  document.getElementById('m-cap').textContent   = tpl.desc || ('Layout: ' + (tpl.name||key));
+  document.getElementById('m-foot').textContent  = 'Layout: ' + (tpl.name||key) + ' · ' + STATE.count + ' agents';
+
+  const available = Object.entries(STATE.clis).filter(([,on]) => on).map(([name]) => name);
+  if (!available.length) available.push('claude'); // fallback
+
+  const agentsEl = document.getElementById('m-agents');
+  agentsEl.innerHTML = '';
+  for (let i = 0; i < STATE.count; i++) {
+    const agent = STATE.agents[i] || {role: i===0?'main':'agent'+i, provider:'claude'};
+    const role  = agent.role || (i===0?'main':'agent'+i);
+    const curProv  = STATE.providers[i] || agent.command || agent.provider || available[0];
+    let   curModel = STATE.models[i]  != null ? STATE.models[i]  : (agent.model  || '');
+    if (curProv !== 'claude' && String(curModel).startsWith('claude-')) curModel = '';  // stale roster default -> show the dropdown, not custom
+    const curEff   = STATE.efforts[i] != null ? STATE.efforts[i] : (agent.effort || '');
+    const roleDesc = i===0 ? 'lead' : (role.includes('rev') ? 'review gate' : 'worker');
+    const provOpts = available.map(p => `<option value="${p}" ${p===curProv?'selected':''}>${p}</option>`).join('')
+                   + `<option value="custom" ${curProv==='custom'?'selected':''}>custom…</option>`;
+    const row = document.createElement('div');
+    row.className = 'arow';
+    row.innerHTML =
+      `<span class="av ${avClass(role)}"></span>` +
+      `<div class="who"><b>${role}</b><small>${roleDesc}</small></div>` +
+      `<select class="m-prov" data-idx="${i}">${provOpts}</select>` +
+      `<span class="m-modelcell" data-idx="${i}">${_modelCell(i, curProv, curModel)}</span>` +
+      _thinkControl(i, curProv, curEff);
+    agentsEl.appendChild(row);
+    _bindModelCell(row.querySelector('.m-modelcell'));
+    // provider change -> rebuild that row's model dropdown + thinking control for the new CLI
+    row.querySelector('.m-prov').onchange = (e) => {
+      const p = e.target.value;
+      const cell = row.querySelector('.m-modelcell');
+      cell.innerHTML = _modelCell(i, p, '');
+      _bindModelCell(cell);
+      (row.querySelector('.m-think') || row.querySelector('.m-nothink')).outerHTML = _thinkControl(i, p, '');
+    };
+  }
+  document.getElementById('scrim').classList.add('show');
+}
+
+function confirmModal() {
+  document.querySelectorAll('#m-agents .arow').forEach((row, i) => {
+    STATE.providers[i] = row.querySelector('.m-prov').value;
+    STATE.models[i]    = _readModel(row.querySelector('.m-modelcell'));
+    const th = row.querySelector('.m-think');
+    STATE.efforts[i]   = th ? th.value : '';
+  });
+  renderTeam();
+  closeModal();
+}
+
+function closeModal() {
+  document.getElementById('scrim').classList.remove('show');
+}
+
+// ── model-list editor (user-editable suggestions → models.json) ───────────────
+function openModelsEditor() {
+  document.getElementById('em-text').value =
+    JSON.stringify({models: STATE.providerModels, thinking: STATE.providerThinking}, null, 2);
+  document.getElementById('em-err').textContent = '';
+  document.getElementById('em-scrim').classList.add('show');
+}
+function closeModelsEditor() { document.getElementById('em-scrim').classList.remove('show'); }
+async function resetModelsEditor() {
+  await api('/api/models', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({reset:true})});
+  const c = await api('/api/clis');                 // now returns the code defaults
+  STATE.providerModels = c.models || {}; STATE.providerThinking = c.thinking || {};
+  document.getElementById('em-text').value =
+    JSON.stringify({models: STATE.providerModels, thinking: STATE.providerThinking}, null, 2);
+  showToast('Reset to defaults.');
+}
+async function saveModelsEditor() {
+  let data;
+  try { data = JSON.parse(document.getElementById('em-text').value); }
+  catch (e) { document.getElementById('em-err').textContent = 'Invalid JSON: ' + e.message; return; }
+  await api('/api/models', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
+  STATE.providerModels   = data.models   || {};
+  STATE.providerThinking = data.thinking || {};
+  closeModelsEditor();
+  if (document.getElementById('scrim').classList.contains('show')) openModal(_modalKey);  // refresh open rows
+  showToast('Model list saved.');
+}
+
+// Escape key: handled below alongside folder picker
+
+// ── stepper ──────────────────────────────────────────────────────────────────
+function _stepCount(d) {
+  const n = STATE.count + d;
+  if (n < 2 || n > 4) return;   // 2-4 agents: 1 agent = no teammate to delegate to
+  STATE.count = n;
+  renderTeam();
+  const best = renderTemplates(STATE.templates);   // re-sort for the new size...
+  if (best) selectTemplate(best);                  // ...and pick the best fit
+}
+document.getElementById('btn-dec').onclick = () => _stepCount(-1);
+document.getElementById('btn-inc').onclick = () => _stepCount(1);
+
+// ── launch ───────────────────────────────────────────────────────────────────
+document.getElementById('btn-kill').onclick = async () => {
+  const btn = document.getElementById('btn-kill');
+  if (btn.disabled) return;
+  btn.disabled = true; btn.style.opacity = '0.55';
+  try {
+    const res = await api('/api/kill', {method: 'POST'});
+    showToast(res && res.ok ? 'Cockpit stopped (mk kill).' : 'Stop failed: ' + ((res && res.error) || 'unknown'));
+  } catch (e) { showToast('Stop failed: ' + e.message); }
+  setTimeout(() => { btn.disabled = false; btn.style.opacity = ''; }, 1500);
+};
+
+document.getElementById('btn-launch').onclick = async () => {
+  const btn = document.getElementById('btn-launch');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  btn.style.opacity = '0.55';
+  setTimeout(() => { btn.disabled = false; btn.style.opacity = ''; }, 3000);
+  try {
+    await api('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({count: STATE.count, layout: STATE.layout, mode: STATE.mode,
+        providers: STATE.providers.slice(0, STATE.count),
+        models: STATE.models.slice(0, STATE.count),
+        efforts: STATE.efforts.slice(0, STATE.count)}),
+    });
+    let res = await api('/api/launch', {method: 'POST'});
+    if (res && res.conflict) {
+      // a DIFFERENT project's cockpit is live — confirm before replacing it (MKCREW is one-at-a-time)
+      const other = res.running_project || 'another project';
+      if (!confirm('A cockpit is already running for:\n\n' + other + '\n\nMKCREW runs one cockpit at a time, so launching THIS project will close that one. Continue?')) {
+        btn.disabled = false; btn.style.opacity = ''; return;   // cancelled — the other project stays up
+      }
+      res = await api('/api/launch', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({force: true})});
+    }
+    showToast('Opening cockpit in a new terminal — it builds the team, then drops you in.');
+  } catch(e) {
+    showToast('Launch failed: ' + e.message);
+    btn.disabled = false;
+    btn.style.opacity = '';
+  }
+};
+
+// ── save profile ─────────────────────────────────────────────────────────────
+document.getElementById('btn-save-profile').onclick = async () => {
+  const name = prompt('Profile name:');
+  if (!name || !name.trim()) return;
+  try {
+    // NOTE: sends the COMPLETE config; the backend POST /api/profiles currently persists only
+    // count/layout/providers (see report) — widen it to keep models/efforts/mode/wsName too.
+    await api('/api/profiles', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(profileFromState(name.trim())),
+    });
+    const {profiles: profs} = await api('/api/profiles');
+    renderProfiles(profs);
+    showToast('Profile “' + name.trim() + '” saved.');
+  } catch(e) {
+    showToast('Save failed: ' + e.message);
+  }
+};
+
+// ── import / export (JSON file, client-side) ─────────────────────────────────
+document.getElementById('btn-import-profile').onclick = () => {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.json,application/json';
+  inp.onchange = async () => {
+    const file = inp.files[0];
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (!profileToState(data)) { showToast('Import failed: not a MKCREW profile.'); return; }
+      applyStateToUI();                                       // restore the FULL config into the live UI
+      const name = (data.name && String(data.name).trim()) || 'imported';
+      await api('/api/profiles', {                            // + persist it into the saved list
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(profileFromState(name)),
+      });
+      const {profiles: profs} = await api('/api/profiles');
+      renderProfiles(profs);
+      showToast('Imported “' + name + '”.');
+    } catch(e) { showToast('Import failed: ' + e.message); }  // bad JSON / unreadable file -> graceful toast
+  };
+  inp.click();
+};
+
+document.getElementById('btn-export-profile').onclick = () => {
+  const data = JSON.stringify(profileFromState('exported'), null, 2);   // ALL fields (lossless with import)
+  const blob = new Blob([data], {type: 'application/json'});
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = 'mkcrew-profile.json';
+  a.click();
+  URL.revokeObjectURL(a.href);   // free the blob URL once the download has started
+};
+
+// ── toast ────────────────────────────────────────────────────────────────────
+let _toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+// ── boot ─────────────────────────────────────────────────────────────────────
+async function boot() {
+  try {
+    const [clisResp, {templates}, {modes}, cfg, {profiles: profs}, projData] = await Promise.all([
+      api('/api/clis'),
+      api('/api/templates'),
+      api('/api/modes'),
+      api('/api/config'),
+      api('/api/profiles'),
+      api('/api/project'),
+    ]);
+
+    STATE.clis            = clisResp.clis;
+    STATE.providerModels  = clisResp.models   || {};
+    STATE.providerThinking= clisResp.thinking || {};
+    STATE.templates = templates;
+    STATE.modes     = modes;
+    STATE.agents    = cfg.agents    || [];
+    STATE.layout    = cfg.layout    || 'hub';
+    STATE.count     = Math.max(2, Math.min(STATE.agents.length || 4, 4));   // clamp 2-4
+    STATE.providers = STATE.agents.map(a => a.command || a.provider || 'claude');
+    STATE.models    = STATE.agents.map(a => a.model  || '');
+    STATE.efforts   = STATE.agents.map(a => a.effort || '');
+
+    // show project path from /api/project
+    document.getElementById('cwd-label').textContent = projData.path || window.location.host;
+    // workspace identity (FIX #4): label the cockpit by its name, not a bare 'main'
+    STATE.name = cfg.name || '';
+    const wsEl = document.getElementById('ws-name');
+    if (STATE.name) { wsEl.textContent = STATE.name; wsEl.style.display = ''; }
+    else { wsEl.style.display = 'none'; }
+
+    renderClis(STATE.clis);
+    renderTemplates(templates);
+    renderModes(modes);
+    renderTeam();
+    renderProfiles(profs);
+    // select the layout from config in the gallery
+    selectTemplate(STATE.layout);
+  } catch(e) {
+    console.error('boot failed:', e);
+    document.getElementById('cwd-label').textContent = 'error: ' + e.message;
+  }
+}
+
+// ── folder picker ─────────────────────────────────────────────────────────────
+let _fpCurrentPath = '';
+
+async function openFolderPicker() {
+  try {
+    const proj = await api('/api/project');
+    await loadDirs(proj.path);
+    document.getElementById('fp-scrim').classList.add('show');
+  } catch(e) {
+    showToast('Could not open folder picker: ' + e.message);
+  }
+}
+
+async function loadDirs(path) {
+  try {
+    const url = '/api/dirs' + (path ? '?path=' + encodeURIComponent(path) : '');
+    const data = await api(url);
+    _fpCurrentPath = data.path;
+    document.getElementById('fp-path').textContent = data.path;
+    document.getElementById('fp-foot').textContent = data.path;
+
+    const list = document.getElementById('fp-list');
+    list.innerHTML = '';
+
+    // "up" entry
+    if (data.parent && data.parent !== data.path) {
+      const upEl = document.createElement('div');
+      upEl.className = 'fp-entry up';
+      upEl.innerHTML =
+        `<svg class="fp-ic i" style="width:14px;height:14px" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>` +
+        `<span>&#8679; up</span>`;
+      upEl.onclick = () => loadDirs(data.parent);
+      list.appendChild(upEl);
+    }
+
+    if (data.dirs.length === 0 && !(data.parent && data.parent !== data.path)) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'color:var(--faint);font-size:12px;padding:8px 10px';
+      empty.textContent = 'No subfolders here.';
+      list.appendChild(empty);
+    }
+
+    data.dirs.forEach(d => {
+      const el = document.createElement('div');
+      el.className = 'fp-entry';
+      el.innerHTML =
+        `<svg class="fp-ic i" style="width:14px;height:14px" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>` +
+        `<span>${d.name}</span>`;
+      el.onclick = () => loadDirs(d.path);
+      list.appendChild(el);
+    });
+  } catch(e) {
+    showToast('Navigation error: ' + e.message);
+  }
+}
+
+async function useFolderPicker() {
+  if (!_fpCurrentPath) return;
+  try {
+    const res = await api('/api/project', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path: _fpCurrentPath}),
+    });
+    if (!res.ok) {
+      showToast('Could not set folder: ' + (res.error || 'unknown error'));
+      return;
+    }
+    closeFolderPicker();
+    document.getElementById('cwd-label').textContent = res.path || _fpCurrentPath;
+    showToast('Project folder changed. Reloading…');
+    await boot();
+  } catch(e) {
+    showToast('Failed to set folder: ' + e.message);
+  }
+}
+
+function closeFolderPicker() {
+  document.getElementById('fp-scrim').classList.remove('show');
+}
+
+// "Change folder" → native Windows folder picker (real Explorer dialog). Falls back to the in-browser
+// list only if the native dialog can't run; a plain cancel just keeps the current folder.
+async function changeFolder() {
+  let res = null;
+  try { res = await api('/api/pick-folder', {method: 'POST'}); } catch (e) {}
+  if (res && res.ok) {
+    document.getElementById('cwd-label').textContent = res.path;
+    showToast('Project folder set. Reloading…');
+    await boot();
+  } else if (!res || (res.error && res.error !== 'no folder selected')) {
+    openFolderPicker();   // native dialog unavailable → in-browser fallback
+  }
+}
+
+document.getElementById('btn-change-folder').onclick = changeFolder;
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeModal(); closeFolderPicker(); }
+});
+
+boot();
+</script>
+</body>
+</html>

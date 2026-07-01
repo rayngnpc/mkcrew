@@ -1,0 +1,275 @@
+<#
+================================================================================
+  MKCREW - one-click bootstrap & preflight for Windows
+--------------------------------------------------------------------------------
+  Checks every prerequisite, installs ONLY what is missing (asks Y/N first),
+  and never forces anything. Re-runnable (idempotent). User-scope by default -
+  no administrator rights required for the normal path.
+
+  Run it (either way):
+    * Double-click  install.bat        (easiest - handles the execution policy)
+    * powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1
+
+  Flags:
+    -Yes         assume "yes" to every install prompt (unattended)
+    -CheckOnly   preflight only: report status, install NOTHING (a `mk doctor`)
+    -DryRun      print what it WOULD do, change nothing
+    -NoUv        use the venv + PATH path instead of a uv tool-install
+
+  One thing this script canNOT do for you: log in to an agent CLI. Vendor logins
+  (claude / codex / ...) are interactive OAuth - it installs the CLI and tells
+  you the one command to run.
+================================================================================
+#>
+param([switch]$Yes, [switch]$CheckOnly, [switch]$DryRun, [switch]$NoUv)
+
+$ErrorActionPreference = "Stop"
+$Root = $PSScriptRoot   # empty when piped via `irm ... | iex` (no script file on disk)
+$FromClone = [bool]$Root -and (Test-Path (Join-Path $Root "pyproject.toml"))  # clone (editable) vs remote one-liner
+$script:Missing = @()   # REQUIRED items still missing when we finish
+$script:Notes   = @()   # manual follow-ups to print at the end
+
+# --- deployment config: where the psmux FORK binary comes from --------------
+#     psmux is a fork with MKCREW-specific fixes; upstream `cargo install psmux`
+#     is NOT the same binary. Publish your fork's release, then set these once.
+$PSMUX_RELEASE_URL = "https://github.com/rayngnpc/psmux-mk/releases/download/v3.3.6-mk/psmux-3.3.6-mk-win-x64.zip"
+$PSMUX_FORK_REPO   = "https://github.com/rayngnpc/psmux-mk"   # cargo fallback: cargo install --git
+$PSMUX_MIN_VER     = "3.3.6"
+$MKCREW_REPO       = "https://github.com/rayngnpc/mkcrew"   # remote source for the no-clone `irm | iex` one-liner
+$BinDir            = Join-Path $env:LOCALAPPDATA "Programs\mkcrew\bin"
+
+# --- pretty output (tech-savvy, colour-coded, robust) -----------------------
+function Rule { Write-Host ("  " + ("-" * 70)) -ForegroundColor DarkGray }
+function Sec($t)  { Write-Host ""; Rule; Write-Host "  $t" -ForegroundColor Cyan; Rule }
+function Ok($t)   { Write-Host "  [ OK ] "  -ForegroundColor Green    -NoNewline; Write-Host $t }
+function Warn($t) { Write-Host "  [WARN] "  -ForegroundColor Yellow   -NoNewline; Write-Host $t }
+function Bad($t)  { Write-Host "  [FAIL] "  -ForegroundColor Red      -NoNewline; Write-Host $t }
+function Info($t) { Write-Host "  [ .. ] "  -ForegroundColor DarkCyan -NoNewline; Write-Host $t }
+function Have($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }
+function Ver($n)  { try { (& $n --version 2>$null | Select-Object -First 1) } catch { "" } }
+
+function Ask($q) {
+    if ($DryRun)    { Write-Host "  ? $q" -ForegroundColor Yellow; return $false }
+    if ($CheckOnly) { return $false }
+    if ($Yes)       { Write-Host "  ? $q  [Y/n] " -ForegroundColor Yellow -NoNewline; Write-Host "Y (auto)"; return $true }
+    Write-Host "  ? $q " -ForegroundColor Yellow -NoNewline
+    Write-Host "[Y/n] " -NoNewline
+    $a = Read-Host
+    return ($a -eq "" -or $a -match '^(y|yes)$')
+}
+
+function Run($desc, [scriptblock]$block) {
+    if ($DryRun) { Info "DRYRUN would: $desc"; return $true }
+    Info $desc
+    try { & $block; return $true }
+    catch { Bad "$desc  ->  $($_.Exception.Message)"; return $false }
+}
+
+function Add-UserPath($dir) {
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+    $cur = [Environment]::GetEnvironmentVariable("Path", "User")
+    if (($cur -split ';') -notcontains $dir) {
+        $new = if ([string]::IsNullOrEmpty($cur)) { $dir } else { "$cur;$dir" }
+        [Environment]::SetEnvironmentVariable("Path", $new, "User")
+        Ok "added to your user PATH: $dir"
+    }
+    if (($env:Path -split ';') -notcontains $dir) { $env:Path = "$env:Path;$dir" }  # this session too
+}
+
+function Banner {
+    Write-Host ""
+    Write-Host "  +====================================================================+" -ForegroundColor Cyan
+    Write-Host "  |  " -ForegroundColor Cyan -NoNewline
+    Write-Host "M K C R E W" -ForegroundColor White -NoNewline
+    Write-Host "   native-Windows multi-agent CLI cockpit             |" -ForegroundColor Cyan
+    Write-Host "  |  one-click bootstrap & preflight  -  check, ask, never force       |" -ForegroundColor DarkGray
+    Write-Host "  +====================================================================+" -ForegroundColor Cyan
+}
+
+# --- installers (each: user-scope, best-effort, honest on failure) ----------
+function Install-Uv {
+    Invoke-RestMethod https://astral.sh/uv/install.ps1 | Invoke-Expression
+    $uvbin = Join-Path $env:USERPROFILE ".local\bin"
+    if (Test-Path (Join-Path $uvbin "uv.exe")) { Add-UserPath $uvbin }
+}
+function Install-Rust {
+    $ri = Join-Path $env:TEMP "rustup-init.exe"
+    Invoke-RestMethod https://win.rustup.rs/x86_64 -OutFile $ri
+    & $ri -y --no-modify-path
+    Add-UserPath (Join-Path $env:USERPROFILE ".cargo\bin")
+}
+function Install-PsmuxBinary($url) {
+    $zip = Join-Path $env:TEMP "psmux-mkcrew.zip"
+    $tmp = Join-Path $env:TEMP "psmux-mkcrew"
+    Invoke-RestMethod $url -OutFile $zip
+    if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }
+    Expand-Archive -Path $zip -DestinationPath $tmp -Force
+    $exe = Get-ChildItem -Recurse -Path $tmp -Filter "psmux.exe" | Select-Object -First 1
+    if (-not $exe) { throw "psmux.exe not found inside the release archive" }
+    New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
+    Copy-Item $exe.FullName (Join-Path $BinDir "psmux.exe") -Force
+    Add-UserPath $BinDir
+}
+
+# ============================================================================
+Banner
+
+# --- MENU (skipped when a flag already chose the mode) ----------------------
+if (-not $Yes -and -not $CheckOnly -and -not $DryRun) {
+    Write-Host ""
+    Write-Host "    [1] " -ForegroundColor Cyan -NoNewline; Write-Host "Install / repair   - check all, install what's missing (asks each)"
+    Write-Host "    [2] " -ForegroundColor Cyan -NoNewline; Write-Host "Check only         - preflight report, install nothing"
+    Write-Host "    [3] " -ForegroundColor Cyan -NoNewline; Write-Host "Unattended         - install everything missing, no prompts"
+    Write-Host "    [Q] " -ForegroundColor Cyan -NoNewline; Write-Host "Quit"
+    Write-Host ""
+    $c = Read-Host "  Select"
+    switch -Regex ($c) {
+        '^2$'    { $script:CheckOnly = $true }
+        '^3$'    { $script:Yes = $true }
+        '^[Qq]$' { Write-Host "  bye."; return }
+        default  { }   # 1 / anything else -> interactive install
+    }
+}
+
+# --- ENVIRONMENT ------------------------------------------------------------
+Sec "Environment"
+$psv = $PSVersionTable.PSVersion
+if ($psv.Major -ge 5) { Ok "PowerShell $psv" } else { Warn "PowerShell $psv (5.1+ recommended)" }
+
+$admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+         ).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)
+if ($admin) { Info "running as Administrator (fine, but not required)" }
+else        { Info "running as a normal user (user-scope install - no admin needed)" }
+
+$pol = Get-ExecutionPolicy
+if ($pol -in @('Restricted','AllSigned','Undefined')) {
+    Info "execution policy is '$pol' - that's OK: install.bat launches this with -ExecutionPolicy Bypass."
+} else { Info "execution policy: $pol" }
+
+if (Have "conhost.exe") { Ok "conhost.exe present (needed for the cockpit's adaptive font)" }
+else { Warn "conhost.exe not found - the cockpit still runs, but font sizing may not apply" }
+
+# --- CORE RUNTIME: uv -> Python -> MKCREW -----------------------------------
+Sec "Core runtime (uv, Python, MKCREW)"
+
+if (Have "uv") {
+    Ok "uv present  ($(Ver uv))"
+} elseif ($NoUv) {
+    Info "uv skipped (-NoUv). Will use the venv + PATH path (needs a system Python 3.12+)."
+} else {
+    Warn "uv (the Python/tool manager - it also fetches Python for you) is not installed."
+    if (Ask "Install uv? (user-scope, no admin)") { Run "install uv" { Install-Uv } }
+}
+
+if ((Have "uv") -and -not $NoUv) {
+    # uv tool-install builds an isolated, GLOBAL install + auto-provisions Python 3.12. Source: a local
+    # clone (editable, for dev) or straight from GitHub (the no-clone `irm | iex` one-liner).
+    $mkArgs = if ($FromClone) { @("--editable", $Root) } else { @("git+$MKCREW_REPO") }
+    $mkDesc = if ($FromClone) { "uv tool install --editable . --force" } else { "uv tool install git+$MKCREW_REPO --force" }
+    if (Have "mk") {
+        Ok "MKCREW already installed  (mk on PATH: $((Get-Command mk).Source))"
+        if (Ask "Reinstall/upgrade MKCREW?") {
+            Run $mkDesc { & uv tool install @mkArgs --force; & uv tool update-shell }
+        }
+    } else {
+        if (Ask "Install MKCREW now ($mkDesc ; pulls Python 3.12 + textual)?") {
+            if (Run $mkDesc { & uv tool install @mkArgs --force; & uv tool update-shell }) {
+                Ok "MKCREW installed (uv). Uninstall later: uv tool uninstall mkcrew"
+            } else { $script:Missing += "mkcrew" }
+        } else { $script:Missing += "mkcrew" }
+    }
+} else {
+    # Fallback: venv + user PATH (needs a system Python).
+    $venv = Join-Path $Root ".venv"; $scripts = Join-Path $venv "Scripts"; $py = Join-Path $scripts "python.exe"
+    if (Test-Path $py) { Ok "project venv present" }
+    elseif (Have "py") {
+        if (Ask "Create the project venv + editable install (needs network)?") {
+            Run "py -3 -m venv + pip install -e ." { & py -3 -m venv $venv; & $py -m pip install -e "$Root" }
+        }
+    } else {
+        Bad "No uv and no system Python. Install uv (recommended) or Python 3.12+, then re-run."
+        $script:Missing += "python/uv"
+    }
+    if (Test-Path $scripts) { Add-UserPath $scripts }
+}
+
+# --- COCKPIT ENGINE: psmux (the FORK) ---------------------------------------
+Sec "Cockpit engine (psmux - the MKCREW fork)"
+if (Have "psmux") {
+    Ok "psmux present  ($(Ver psmux))   (expected fork >= $PSMUX_MIN_VER)"
+} else {
+    Warn "psmux is NOT on PATH. The cockpit cannot run without it, and it must be the MKCREW FORK (not upstream)."
+    $done = $false
+    if ($PSMUX_RELEASE_URL -and (Ask "Download the psmux fork binary and add it to PATH? (no Rust needed)")) {
+        $done = Run "download psmux fork -> $BinDir" { Install-PsmuxBinary $PSMUX_RELEASE_URL }
+    }
+    if (-not $done -and $PSMUX_FORK_REPO) {
+        if (-not (Have "cargo") -and (Ask "Install Rust (rustup) so psmux can be built from source?")) {
+            Run "install rustup" { Install-Rust } | Out-Null
+        }
+        if ((Have "cargo") -and (Ask "Build psmux from the fork with cargo?")) {
+            $done = Run "cargo install --git $PSMUX_FORK_REPO --force" { & cargo install --git $PSMUX_FORK_REPO --force }
+        }
+    }
+    if (-not $done) {
+        Bad "psmux still missing."
+        $script:Notes += "psmux: set `$PSMUX_RELEASE_URL (a release .zip of the fork) OR `$PSMUX_FORK_REPO at the top of install.ps1, then re-run. Verify with:  psmux -V"
+        $script:Missing += "psmux"
+    }
+}
+
+# --- NODE.JS (opencode / codex plugins / npm-installed CLIs) -----------------
+Sec "Node.js (used by opencode, codex plugins, and npm-installed CLIs)"
+if (Have "node") {
+    Ok "node present  ($(Ver node))"
+} else {
+    Warn "Node.js not found - opencode and some CLIs need it."
+    if (Have "winget") {
+        if (Ask "Install Node LTS via winget? (winget may prompt for admin)") {
+            Run "winget install OpenJS.NodeJS.LTS" { & winget install --id OpenJS.NodeJS.LTS -e --source winget --accept-package-agreements --accept-source-agreements }
+        } else { $script:Notes += "Node.js: install later from https://nodejs.org/ (LTS)." }
+    } else {
+        $script:Notes += "Node.js: winget not present - install LTS from https://nodejs.org/ then re-run."
+    }
+}
+
+# --- AGENT CLIs (need >= 1; each needs its own login) -----------------------
+Sec "Agent CLIs (need at least one; login is interactive)"
+$agents = @("claude","codex","opencode","agy") | Where-Object { Have $_ }
+if ($agents) {
+    Ok ("found: " + ($agents -join ", "))
+} else {
+    Warn "No agent CLI found (claude / codex / opencode / agy) - the team has nothing to run."
+    if (Have "node") {
+        if (Ask "Install the Claude Code CLI now (npm i -g @anthropic-ai/claude-code)?") {
+            if (Run "npm i -g @anthropic-ai/claude-code" { & npm install -g "@anthropic-ai/claude-code" }) {
+                $script:Notes += "Claude installed - run `claude` ONCE to log in (interactive; no script can do this for you)."
+            }
+        } else { $script:Missing += "agent-cli" }
+    } else {
+        $script:Notes += "Install an agent CLI after Node, e.g.  npm i -g @anthropic-ai/claude-code  (then run `claude` to log in)."
+        $script:Missing += "agent-cli"
+    }
+    $script:Notes += "Other CLIs: codex, opencode, agy - install per their docs; each is auto-detected on next run."
+}
+
+# --- SUMMARY ----------------------------------------------------------------
+Sec "Summary"
+$req = $script:Missing | Sort-Object -Unique
+if ($req.Count -eq 0) {
+    Ok "All required prerequisites are in place."
+    if ($CheckOnly) { Write-Host "  (check-only - nothing was installed)" -ForegroundColor DarkGray }
+    else { Write-Host ""; Write-Host "  Next:  open a NEW terminal, then run:  " -NoNewline; Write-Host "mk studio" -ForegroundColor Green }
+} else {
+    Bad ("Still missing (required): " + ($req -join ", "))
+    Write-Host "  Re-run after resolving, or use the notes below." -ForegroundColor DarkGray
+}
+if ($script:Notes.Count -gt 0) {
+    Write-Host ""
+    Write-Host "  Follow-ups:" -ForegroundColor Cyan
+    foreach ($n in ($script:Notes | Select-Object -Unique)) { Write-Host "   - $n" -ForegroundColor Gray }
+}
+Write-Host ""
+Rule
+Write-Host "  Re-check anytime:  " -NoNewline; Write-Host ".\install.bat" -ForegroundColor Cyan -NoNewline; Write-Host " (menu -> Check only)  or  " -NoNewline; Write-Host "mk doctor" -ForegroundColor Cyan
+Rule
