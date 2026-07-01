@@ -178,6 +178,12 @@ if ((Have "uv") -and -not $NoUv) {
             } else { $script:Missing += "mkcrew" }
         } else { $script:Missing += "mkcrew" }
     }
+    # `uv tool update-shell` proved unreliable on a fresh box (sandbox test: mk installed but not on PATH).
+    # Explicitly put uv's tool-bin (where the `mk` shim lives) on PATH -- the same robust Add-UserPath psmux uses.
+    if (-not $DryRun -and (Have "uv")) {
+        $tb = (& uv tool dir --bin 2>$null | Out-String).Trim()
+        if ($tb) { Add-UserPath $tb }
+    }
 } else {
     # Fallback: venv + user PATH (needs a system Python).
     $venv = Join-Path $Root ".venv"; $scripts = Join-Path $venv "Scripts"; $py = Join-Path $scripts "python.exe"
