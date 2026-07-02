@@ -26,7 +26,7 @@ The installer **checks 2 & 3** and tells you what's missing — it won't silentl
 ### ⚡ One command — no clone, installs everything
 
 ```powershell
-powershell -c "irm https://raw.githubusercontent.com/rayngnpc/mkcrew/main/install.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/rayngnpc/mkcrew/main/install.ps1 | iex"
 ```
 
 Like a Debian bootstrap: that single line downloads and runs `install.ps1`, which checks and installs

@@ -149,10 +149,24 @@ $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 if ($admin) { Info "running as Administrator (fine, but not required)" }
 else        { Info "running as a normal user (user-scope install - no admin needed)" }
 
-$pol = Get-ExecutionPolicy
-if ($pol -in @('Restricted','AllSigned','Undefined')) {
-    Info "execution policy is '$pol' - that's OK: install.bat launches this with -ExecutionPolicy Bypass."
-} else { Info "execution policy: $pol" }
+# uv's installer (and other .ps1 tools) refuse to run unless the EFFECTIVE policy is
+# Unrestricted/RemoteSigned/Bypass. Windows ships 'Restricted' -> fix it, user-scope, NO admin/UAC.
+$pol = (Get-ExecutionPolicy).ToString()
+if ($pol -in @('Unrestricted','RemoteSigned','Bypass')) {
+    Ok "execution policy: $pol"
+} else {
+    Warn "execution policy '$pol' blocks PowerShell installer scripts (uv's included)."
+    if (-not $DryRun -and -not $CheckOnly) {
+        # transient rescue so THIS run always works: process scope dies with this window, changes nothing
+        try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; Info "applied Bypass for THIS run only (process scope - transient, no admin)" } catch {}
+    }
+    if (Ask "Set policy 'RemoteSigned' for your user account? (persistent, no admin/UAC - what uv recommends)") {
+        try { Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force; Ok "execution policy now: RemoteSigned (CurrentUser)" }
+        catch { Bad "could not set policy: $($_.Exception.Message)"; $script:Notes += "policy: run  Set-ExecutionPolicy RemoteSigned -Scope CurrentUser" }
+    } else {
+        $script:Notes += "execution policy kept at '$pol': THIS run works, but future installer scripts may refuse. fix anytime:  Set-ExecutionPolicy RemoteSigned -Scope CurrentUser"
+    }
+}
 
 if (Have "conhost.exe") { Ok "conhost.exe present (needed for the cockpit's adaptive font)" }
 else { Warn "conhost.exe not found - the cockpit still runs, but font sizing may not apply" }
