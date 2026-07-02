@@ -499,3 +499,32 @@ def test_panes_per_window_drives_font_density():
     assert layouts.panes_per_window("main-vertical", 4) == 5
     assert layouts.panes_per_window("hub", 9) == 2           # 1 agent + core strip per tab
     assert layouts.panes_per_window("pages", 9) == 7         # 6 agents + core per page
+
+
+def test_add_template_layouts_have_no_zero_size_cells():
+    """0-size-core regression sweep for every custom `mk add` layout string: at 1..4 agents and the
+    window sizes measured in the field (small attached client, the 250x60 build size, a maximized
+    conhost), every leaf cell keeps a POSITIVE width and height (an invisible 0-row core would read as
+    'core pane absent'), the checksum is valid, and there is exactly one cell per pane (psmux fills
+    cells by pane order and DROPS/mis-fills panes on a count mismatch)."""
+    import re
+    cell_re = re.compile(r"(\d+)x(\d+),\d+,\d+,(\d+)")       # leaf cells only (containers end in [ or {)
+    for w, h in [(80, 24), (120, 29), (220, 50), (250, 60), (300, 80)]:
+        for n in range(1, 5):                                 # n agents = lead + (n-1) workers
+            workers = [str(10 + i) for i in range(n - 1)]
+            cases = [
+                ("main-vertical", layouts._main_vertical_layout(w, h, "1", "2", workers)),
+                ("even-horizontal", layouts._sidebyside_core_layout(w, h, ["1", *workers], "2")),
+                ("tiled", layouts._tiled_layout(w, h, ["1", *workers, "2"])),
+                ("lead-left-ide", layouts._main_vertical_with_files(w, h, "1", workers, "9")),
+                ("sidebyside-ide", layouts._sidebyside_N_layout(w, h, "1", workers, "9")),
+            ]
+            for name, layout in cases:
+                csum, geom = layout.split(",", 1)
+                assert layouts._layout_csum(geom) == csum, f"{name} {w}x{h} n={n}: bad checksum"
+                cells = cell_re.findall(geom)
+                assert len(cells) == n + 1, \
+                    f"{name} {w}x{h} n={n}: {len(cells)} cells != {n + 1} panes -> psmux drops panes"
+                for cw, ch, pid in cells:
+                    assert int(cw) >= 1 and int(ch) >= 1, \
+                        f"{name} {w}x{h} n={n}: ZERO-SIZE cell for pane {pid}: {geom}"

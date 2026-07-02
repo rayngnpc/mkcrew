@@ -1,5 +1,5 @@
 # src/mkcrew/psmux.py
-import subprocess, time
+import os, subprocess, time
 
 # Wait briefly after typing a line before pressing Enter, so the Enter lands as a deliberate SUBMIT
 # and not a newline swallowed by the same input burst as the text. Direct Codex doorbell delivery now
@@ -15,9 +15,16 @@ class PsmuxBackend:
     def __init__(self, exe: str = None):
         from . import frozen
         self.exe = exe or frozen.psmux_exe()   # bundled psmux.exe when frozen, else 'psmux' on PATH
+        # MK_PSMUX_SOCKET=<name>: target an ISOLATED psmux server (`psmux -L <name> ...`) instead of
+        # the default one — lets tests / dev cockpits run without ever touching the user's live
+        # cockpit. Unset (the default) leaves every invocation byte-identical to before.
+        self.socket = os.environ.get("MK_PSMUX_SOCKET") or None
+
+    def _base(self) -> list:
+        return [self.exe, "-L", self.socket] if self.socket else [self.exe]
 
     def _run(self, *args) -> subprocess.CompletedProcess:
-        return subprocess.run([self.exe, *args], capture_output=True, encoding="utf-8", errors="replace")
+        return subprocess.run([*self._base(), *args], capture_output=True, encoding="utf-8", errors="replace")
 
     def kill_server(self) -> None:
         self._run("kill-server")
@@ -96,6 +103,15 @@ class PsmuxBackend:
         """Best-effort prefix key binding (Ctrl-b <key> -> command); cosmetic, never raises."""
         self._run("bind-key", key, *command)
 
+    def window_names(self, session: str) -> list[str]:
+        """The session's window (tab) names, in index order. psmux resolves window targets BY NAME to
+        the FIRST match, so callers use this to refuse creating a duplicate name (a second window with
+        the same name would silently receive none of its splits). Best-effort: [] on any failure."""
+        result = self._run("list-windows", "-t", session, "-F", "#{window_name}")
+        if result.returncode != 0:
+            return []
+        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
     def pane_id(self, target: str) -> str:
         return self._run("display-message", "-t", target, "-p", "#{pane_id}").stdout.strip()
 
@@ -133,4 +149,4 @@ class PsmuxBackend:
         return self._run("capture-pane", "-t", pane_id, "-p").stdout
 
     def attach_command(self, session: str) -> list[str]:
-        return [self.exe, "attach", "-t", session]
+        return [*self._base(), "attach", "-t", session]

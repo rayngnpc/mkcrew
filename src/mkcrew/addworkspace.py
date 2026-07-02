@@ -299,6 +299,9 @@ class AddWorkspaceApp(App):
         self._overlay = None                 # None | "overwrite" | "existing" | "browse" (non-step screens)
         self._workspaces = []                # last `mk workspaces` result (open-existing list)
         self._drive_list = _drives()         # item #3: drive/root jump targets for the Browse picker
+        self._launched = False               # re-entrancy guard: Create/Open must fire exactly ONCE
+                                             # (a queued double-click/Enter before exit() completes must
+                                             # never launch a second `mk add` -> a duplicate window)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="card"):
@@ -851,16 +854,32 @@ class AddWorkspaceApp(App):
             return
         self._open_and_exit(ws["path"])
 
+    def _launch_detached(self, cmd: list[str]) -> bool:
+        """Fire `mk <cmd>` ONCE, detached but WATCHED, and report success.
+
+        The backend runs detached (CREATE_NO_WINDOW), so its sys.exit messages are invisible — the
+        old blind Popen meant a refused/failed add just looked like "nothing happened" (and a user
+        who retries then creates a DUPLICATE window). So launch through the --run-and-report watcher
+        (this same module re-invoked), which runs mk captured and surfaces the outcome as a psmux
+        display-message toast. The _launched guard makes a queued second Create/Open press a no-op:
+        one user action can never fire two `mk add` processes."""
+        if self._launched:
+            return False
+        self._pending_cmd = cmd          # expose for tests / introspection before we launch + exit
+        from . import frozen
+        try:
+            subprocess.Popen([*frozen.add_workspace_cmd(), "--run-and-report", *cmd],
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except Exception as e:                           # mk not on PATH / not built yet
+            self.notify(f"mk {cmd[0] if cmd else ''} failed: {e}", severity="error")
+            return False
+        self._launched = True
+        return True
+
     def _open_and_exit(self, folder: str) -> None:
         """Fire `mk open <folder>` (resume an existing setup) and close the picker."""
-        cmd = _open_command(folder)
-        self._pending_cmd = cmd          # expose for tests / introspection before we launch + exit
-        try:
-            subprocess.Popen([_mk_exe(), *cmd], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        except Exception as e:                           # mk open not on PATH / not built yet
-            self.notify(f"mk open failed: {e}", severity="error")
-            return
-        self.exit()
+        if self._launch_detached(_open_command(folder)):
+            self.exit()
 
     def _submit(self) -> None:
         folder = self.query_one("#folder", Input).value.strip()
@@ -880,14 +899,8 @@ class AddWorkspaceApp(App):
             self.notify(f"Folder not found: {folder}", severity="error")
             self.current_step = 0        # bounce back to the Folder step to fix the path
             return
-        cmd = self._build_cmd()
-        self._pending_cmd = cmd          # expose for tests / introspection before we launch + exit
-        try:
-            subprocess.Popen([_mk_exe(), *cmd], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        except Exception as e:                           # mk add not on PATH / not built yet
-            self.notify(f"mk add failed: {e}", severity="error")
-            return
-        self.exit()
+        if self._launch_detached(self._build_cmd()):
+            self.exit()
 
 
 def _mk_exe():
@@ -1045,10 +1058,31 @@ def _single_provider_command(folder, name, count, provider, effort, layout, mode
 
 def _display_message(text: str) -> None:
     try:
-        from . import frozen
-        subprocess.run([frozen.psmux_exe(), "display-message", text], capture_output=True)
+        from .psmux import PsmuxBackend
+        PsmuxBackend()._run("display-message", text)   # backend resolves the exe + MK_PSMUX_SOCKET
     except Exception:
         pass
+
+
+def _run_and_report(args: list[str]) -> int:
+    """--run-and-report <mk argv...>: run `mk <argv>` CAPTURED and surface the outcome as a psmux
+    display-message toast. The wizard fires its mk add/open through this detached watcher because the
+    backend's sys.exit messages are otherwise INVISIBLE (CREATE_NO_WINDOW): a refusal (live cockpit /
+    duplicate tab / already configured) or a mid-build failure looked like "nothing happened", and a
+    user who retried then created a DUPLICATE window. Mirrors _menu_run_main's report tail."""
+    try:
+        result = subprocess.run([_mk_exe(), *args], capture_output=True,
+                                encoding="utf-8", errors="replace")
+    except Exception as e:
+        _display_message(f"MKCREW: add workspace failed: {e}")
+        return 1
+    if result.returncode == 0:
+        detail = (result.stdout or "").strip().splitlines()
+        _display_message(f"MKCREW: {detail[0]}" if detail else "MKCREW: done")
+    else:
+        lines = ((result.stderr or "") + "\n" + (result.stdout or "")).strip().splitlines()
+        _display_message(f"MKCREW: {lines[0] if lines else 'add workspace failed'}")
+    return result.returncode
 
 
 def _menu_run_main(args: list[str]) -> int:
@@ -1224,6 +1258,8 @@ def addworkspace_main():
     args = sys.argv[1:]
     if args and args[0] == "--menu-run":
         return _menu_run_main(args[1:])
+    if args and args[0] == "--run-and-report":
+        return _run_and_report(args[1:])
     if args and args[0] == "--popup":
         return _popup_main(args[1] if len(args) > 1 else None)
     AddWorkspaceApp(args[0] if args else None).run()

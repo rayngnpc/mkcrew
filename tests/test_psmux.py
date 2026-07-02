@@ -1,10 +1,16 @@
 # tests/test_psmux.py
-import subprocess, time, pytest
+import os, subprocess, time, pytest
 from unittest.mock import patch, MagicMock
 from mkcrew.psmux import PsmuxBackend, _WAKE_ENTER_GAP, _WAKE_SETTLE
 
 @pytest.fixture
-def mux():
+def mux(monkeypatch):
+    # psmux `kill-server` on the DEFAULT socket kills ALL namespaces — including a LIVE cockpit.
+    # These real-server tests are therefore opt-in only, and run namespaced away from the default.
+    if os.environ.get("MK_PSMUX_LIVE_TESTS") != "1":
+        pytest.skip("live psmux tests kill the psmux server (all namespaces, incl. a running cockpit); "
+                    "opt in with MK_PSMUX_LIVE_TESTS=1 on a machine with NO cockpit running")
+    monkeypatch.setenv("MK_PSMUX_SOCKET", "mktests")
     m = PsmuxBackend()
     m.kill_server()
     yield m

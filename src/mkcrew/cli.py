@@ -105,8 +105,29 @@ def _pid_alive(pid) -> bool:
 
 
 def _cockpit_live_at(project) -> bool:
-    """True only if <project> has a cockpit.lock whose recorded pid is STILL running. A missing lock,
-    a garbage lock, or a stale lock from a dead pid all count as NOT live (safe to clobber)."""
+    """True if the running cockpit is the one at <project>.
+
+    Two signals, either suffices:
+      (1) the live-cockpit project marker (cockpit_project.txt, written by every `mk start`,
+          removed by `mk kill`) names THIS project.  This is the reliable check: the pid lock
+          below records the DAEMON's pid, and the daemon can die/crash while the psmux session
+          (the actual cockpit the user is typing in) lives on — measured live: a cockpit whose
+          mkd had died reported 'not live' and let `mk add` clobber its own directory (the
+          duplicate-tab bug).  Callers (cmd_add) have already verified the psmux session exists,
+          and cmd_start rewrites the marker on every start, so marker==project + session alive
+          means the live cockpit IS this directory.
+      (2) the per-dir cockpit.lock pid is still running (kept as a fallback for a clobbered
+          marker).  A missing/garbage/dead-pid lock alone counts as NOT live (safe to clobber)."""
+    try:
+        live = config.cockpit_project_file().read_text(encoding="utf-8").strip()
+    except OSError:
+        live = ""
+    if live:
+        try:
+            if Path(live).resolve() == Path(project).resolve():
+                return True
+        except (OSError, ValueError):
+            pass
     try:
         pid = int(_cockpit_lock(project).read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
@@ -719,6 +740,14 @@ def cmd_add(argv):
         sys.exit(f"A MKCREW cockpit is already running at {project}; "
                  f"close it first, or use 'mk open {project}' to attach.")
     name = _flag("--name") or project.name
+    # Duplicate-tab guard (idempotency): psmux resolves window targets BY NAME to the FIRST match, so
+    # a second window with this name would route every later split / select-layout / title into the
+    # FIRST one — mangling it (the final fixed-cell layout then DROPS the excess panes: the measured
+    # "agent panes but no core pane" tab) while the new tab is left as one bare pane. One name = one
+    # window: refuse up front (the wizard surfaces this message as a toast).
+    if hasattr(mux, "window_names") and name in mux.window_names(SESSION):
+        sys.exit(f"a workspace tab named '{name}' already exists in the cockpit — switch to it with "
+                 f"Ctrl-b n, close it first (Ctrl-b x), or re-add with a different --name")
     provider = _flag("--provider") or "claude"
     model = _flag("--model") or ""
     effort = _flag("--effort") or "high"

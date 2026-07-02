@@ -143,7 +143,10 @@ def test_wizard_keyboard_flow_builds_per_agent_command(tmp_path):
                 "--efforts", "high,high",                      # per-agent: codex 'high' + claude 'high'
                 "--template", "main-vertical"]                 # default template (Normal group, index 0)
     assert captured["pending"] == expected         # the argv the app built from the keyboard+click path
-    assert captured["argv"][1:] == expected        # ...and what it actually launched (argv[0] = mk exe)
+    # ...and what it actually launched: the --run-and-report WATCHER wrapping that same mk argv, so a
+    # backend refusal/failure surfaces as a display-message toast instead of dying invisibly.
+    i = captured["argv"].index("--run-and-report")
+    assert captured["argv"][i + 1:] == expected
 
 
 def test_wizard_create_rejects_nonexistent_folder(tmp_path):
@@ -741,7 +744,9 @@ def test_wizard_overwrite_prompt_no_opens_existing(tmp_path):
             captured["pending"] = app._pending_cmd
 
     asyncio.run(go())
-    assert captured["argv"][1:] == ["open", str(tmp_path)]       # launched argv (argv[0] = mk exe)
+    # launched argv: the --run-and-report watcher wrapping `open <folder>` (failures become a toast)
+    i = captured["argv"].index("--run-and-report")
+    assert captured["argv"][i + 1:] == ["open", str(tmp_path)]
     assert captured["pending"] == ["open", str(tmp_path)]
 
 
@@ -765,7 +770,8 @@ def test_wizard_open_existing_lists_and_opens(tmp_path):
                 await pilot.pause()
 
     asyncio.run(go())
-    assert captured["argv"][1:] == ["open", "C:/a"]
+    i = captured["argv"].index("--run-and-report")               # watcher-wrapped (visible failures)
+    assert captured["argv"][i + 1:] == ["open", "C:/a"]
 
 
 def test_wizard_open_existing_empty_is_graceful(tmp_path):
@@ -932,3 +938,89 @@ def test_wizard_layout_step_shows_and_updates_template_preview(tmp_path):
             # the pick is global-single: choosing Experimental cleared the Normal group
             assert app.query_one("#tmpl_normal", RadioSet).pressed_index == -1
     asyncio.run(go())
+
+
+# ---------------------------------------------------------------------------
+# Duplicate-tab / invisible-failure fixes: one Create = one launch, and the
+# detached backend's outcome is surfaced as a psmux display-message toast.
+# ---------------------------------------------------------------------------
+
+def test_wizard_create_fires_exactly_once(tmp_path):
+    """One user action must never produce two windows: a second Create press (double-click, or a
+    queued Enter landing before exit() finishes) must NOT launch a second detached `mk add`."""
+    launches = []
+
+    async def go():
+        with patch("mkcrew.addworkspace.subprocess.Popen",
+                   lambda *a, **k: launches.append(a[0])):
+            app = AddWorkspaceApp(str(tmp_path))
+            async with app.run_test(size=(100, 40)) as pilot:
+                await pilot.pause()
+                app.current_step = 3                      # jump to Confirm
+                await pilot.pause()
+                app._submit()
+                app._submit()                             # the double-fire: must be a no-op
+                await pilot.pause()
+    asyncio.run(go())
+    assert len(launches) == 1                             # exactly ONE detached mk add
+
+
+def test_wizard_launches_via_run_and_report_watcher(tmp_path):
+    """The wizard's detached `mk add` runs through the --run-and-report watcher (this module
+    re-invoked), because cmd_add's sys.exit refusals are INVISIBLE in a CREATE_NO_WINDOW process —
+    the watcher runs mk captured and toasts the outcome via psmux display-message."""
+    launches = []
+
+    async def go():
+        with patch("mkcrew.addworkspace.subprocess.Popen",
+                   lambda *a, **k: launches.append(a[0])):
+            app = AddWorkspaceApp(str(tmp_path))
+            async with app.run_test(size=(100, 40)) as pilot:
+                await pilot.pause()
+                app.current_step = 3
+                await pilot.pause()
+                app._submit()
+    asyncio.run(go())
+    (argv,) = launches
+    i = argv.index("--run-and-report")
+    assert argv[i + 1] == "add"                            # the watcher wraps the real mk argv
+    assert argv[i + 2] == str(tmp_path)                    # ...pointing at the picked folder
+
+
+def test_run_and_report_surfaces_backend_failure(monkeypatch):
+    """A refused/failed `mk add` must be VISIBLE: the watcher captures the backend and toasts the
+    FIRST error line (e.g. the duplicate-tab refusal) via display-message, propagating the rc."""
+    from mkcrew import addworkspace as aw
+
+    class R:
+        returncode = 2
+        stdout = ""
+        stderr = ("a workspace tab named 'x' already exists in the cockpit — switch to it with "
+                  "Ctrl-b n, close it first (Ctrl-b x), or re-add with a different --name\nnoise")
+
+    toasts = []
+    ran = {}
+    monkeypatch.setattr(aw, "_display_message", lambda t: toasts.append(t))
+    monkeypatch.setattr(aw.subprocess, "run", lambda argv, **kw: (ran.setdefault("argv", argv), R)[1])
+    rc = aw._run_and_report(["add", "F", "--agents", "2"])
+    assert rc == 2
+    assert ran["argv"][1:] == ["add", "F", "--agents", "2"]     # argv[0] = the mk exe
+    assert toasts == ["MKCREW: a workspace tab named 'x' already exists in the cockpit — switch to "
+                      "it with Ctrl-b n, close it first (Ctrl-b x), or re-add with a different --name"]
+
+
+def test_run_and_report_success_toast(monkeypatch):
+    """Success is surfaced too (parity with the native-menu flow): the backend's summary line becomes
+    the toast, so the user knows the add actually happened without hunting for the new tab."""
+    from mkcrew import addworkspace as aw
+
+    class R:
+        returncode = 0
+        stdout = "added workspace 'ws': 2 agent(s) (2 claude), main-vertical layout\n"
+        stderr = ""
+
+    toasts = []
+    monkeypatch.setattr(aw, "_display_message", lambda t: toasts.append(t))
+    monkeypatch.setattr(aw.subprocess, "run", lambda argv, **kw: R)
+    assert aw._run_and_report(["add", "F"]) == 0
+    assert toasts == ["MKCREW: added workspace 'ws': 2 agent(s) (2 claude), main-vertical layout"]

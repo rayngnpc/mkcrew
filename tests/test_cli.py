@@ -1034,6 +1034,67 @@ def test_cmd_add_stale_lock_does_not_block(monkeypatch, tmp_path):
     assert data["layout"] == "tiled"                                       # proceeded despite the stale lock
 
 
+def test_cockpit_live_at_trusts_live_project_marker(tmp_path, monkeypatch):
+    """ROOT-CAUSE regression (add-own-dir bug): cockpit.lock records the DAEMON's pid, and the daemon
+    can die/crash while the psmux session (the cockpit the user is typing in) lives on — measured live:
+    the lock pid was dead, `_cockpit_live_at` said False, and `mk add` clobbered the live cockpit's own
+    directory into duplicate tabs. The live-cockpit project marker (cockpit_project.txt, rewritten by
+    every `mk start`) must count as live-at-this-dir even when the pid lock is stale or missing."""
+    from mkcrew import cli, config
+    marker = tmp_path / "cockpit_project.txt"
+    monkeypatch.setattr(config, "cockpit_project_file", lambda: marker)
+    proj = tmp_path / "ws"
+    proj.mkdir()
+    assert cli._cockpit_live_at(proj) is False                 # no marker, no lock -> not live
+    marker.write_text(str(proj), encoding="utf-8")
+    assert cli._cockpit_live_at(proj) is True                  # marker names THIS dir -> live (no lock needed)
+    lock = proj / ".mkcrew" / "cockpit.lock"
+    lock.parent.mkdir(parents=True)
+    lock.write_text("13032", encoding="utf-8")                 # the measured field state: dead daemon pid...
+    monkeypatch.setattr(cli, "_pid_alive", lambda pid: False)
+    assert cli._cockpit_live_at(proj) is True                  # ...but the marker still says live HERE
+    marker.write_text(str(tmp_path / "other"), encoding="utf-8")
+    assert cli._cockpit_live_at(proj) is False                 # marker elsewhere -> falls back to the dead lock
+
+
+def test_cmd_add_refuses_duplicate_window_name(monkeypatch, tmp_path):
+    """Duplicate-tab guard: psmux resolves window targets BY NAME to the FIRST match, so adding a
+    workspace whose name is already a tab would route every split/select-layout into the OLD window —
+    mangling it (psmux drops the excess panes on the fixed-cell final layout: the measured 'agent
+    panes but no core' tab) and leaving the new tab as one bare pane. cmd_add must refuse up front,
+    creating NOTHING and leaving any existing config untouched."""
+    import pytest
+    from mkcrew import cli
+    monkeypatch.setattr(cli, "_session_exists", lambda mux, s: True)
+
+    class DupMux(_AddMux):
+        def window_names(self, session):
+            return ["main", tmp_path.name]                     # this workspace's name is already a tab
+
+    monkeypatch.setattr(cli, "PsmuxBackend", DupMux)
+    with pytest.raises(SystemExit) as exc:
+        cli.cmd_add([str(tmp_path), "--agents", "2", "--template", "main-vertical", "--force"])
+    assert "already exists" in str(exc.value)
+    assert not (tmp_path / ".mkcrew" / "team.config").exists()  # refused BEFORE writing/creating anything
+
+
+def test_cmd_add_fresh_window_name_passes_duplicate_guard(monkeypatch, tmp_path):
+    """The duplicate-tab guard only refuses a COLLIDING name: `--name` picks a fresh tab name and the
+    add proceeds normally (window created, config written)."""
+    import json
+    from mkcrew import cli
+    _stub_add(monkeypatch)
+
+    class NamedMux(_AddMux):
+        def window_names(self, session):
+            return ["main", tmp_path.name]                     # the folder's default name IS taken...
+
+    monkeypatch.setattr(cli, "PsmuxBackend", NamedMux)
+    cli.cmd_add([str(tmp_path), "--agents", "2", "--template", "tiled", "--name", "fresh"])
+    data = json.loads((tmp_path / ".mkcrew" / "team.config").read_text(encoding="utf-8"))
+    assert data["layout"] == "tiled"                           # ...but --name fresh proceeds fine
+
+
 def test_cmd_add_persists_workspace_name(monkeypatch, tmp_path):
     """FIX #4: `mk add --name X` persists the workspace identity (read back via load_name)."""
     from mkcrew import cli, teamconfig
