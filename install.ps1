@@ -172,13 +172,18 @@ if ((Have "uv") -and -not $NoUv) {
     # uv tool-install builds an isolated, GLOBAL install + auto-provisions Python 3.12. Source: a local
     # clone (editable) or GitHub's TARBALL (no-clone one-liner). Tarball -- NOT git+ -- so a blank machine
     # with no `git` still installs (uv needs system git for git+ sources; a fresh box has none).
-    $mkArgs = if ($FromClone) { @("--editable", $Root) } else { @("$MKCREW_TARBALL") }
+    # NO splatting here: `$x = if(...){ @(1item) }` unwraps to a STRING, and splatting a string passes it
+    # CHAR-BY-CHAR to the native exe (uv saw 'h','t','t','p',...) -- the sandbox-test failure. Explicit branches.
     $mkDesc = if ($FromClone) { "uv tool install --editable . --force" } else { "uv tool install <mkcrew tarball> --force" }
     $already = [bool](Have "mk")
     if ($already) { Ok "MKCREW already installed  (mk on PATH: $((Get-Command mk).Source))" }
     $go = if ($already) { Ask "Reinstall/upgrade MKCREW?" } else { Ask "Install MKCREW now ($mkDesc ; pulls Python 3.12 + textual)?" }
     if ($go) {
-        $null = Run $mkDesc { & uv tool install @mkArgs --force; & uv tool update-shell }
+        $null = Run $mkDesc {
+            if ($FromClone) { & uv tool install --editable "$Root" --force }
+            else            { & uv tool install "$MKCREW_TARBALL" --force }
+            & uv tool update-shell
+        }
         # VERIFY the `mk` shim actually exists -- uv can print success yet fail (e.g. a git+ source with no
         # git), and a native non-zero exit does NOT throw in PS 5.1. Trust the shim on disk, not the exit code.
         if (-not $DryRun) {
