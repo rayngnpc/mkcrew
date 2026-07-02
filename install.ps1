@@ -51,13 +51,76 @@ function Info($t) { Write-Host "  [ .. ] $t" -ForegroundColor DarkCyan }
 function Have($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }
 function Ver($n)  { try { (& $n --version 2>$null | Select-Object -First 1) } catch { "" } }
 
+# real console with a live keyboard? (false when piped / CI / ISE -> typed fallbacks)
+function Test-Tui { ($Host.Name -eq 'ConsoleHost') -and -not [Console]::IsInputRedirected }
+
 function Ask($q) {
     if ($DryRun)    { Write-Host "  ?  $q  [Y/n] -> skipped (dry-run)" -ForegroundColor Yellow; return $false }
     if ($CheckOnly) { return $false }
     if ($Yes)       { Write-Host "  ?  $q  [Y/n] -> Y (auto)" -ForegroundColor Yellow; return $true }
-    Write-Host "  ?  $q  [Y/n] " -ForegroundColor Yellow -NoNewline   # interactive: cursor stays on the line
-    $a = Read-Host
-    return ($a -eq "" -or $a -match '^(y|yes)$')
+    Write-Host "  ?  $q" -ForegroundColor Yellow
+    if (-not (Test-Tui)) {                                     # piped/CI: plain typed prompt
+        $a = Read-Host "     [Y/n]"
+        return ($a -eq "" -or $a -match '^(y|yes)$')
+    }
+    # arrow-key YES/NO toggle on one short line (question stays on its own line above)
+    $sel = $true
+    [Console]::CursorVisible = $false
+    try {
+        while ($true) {
+            $line = if ($sel) { "     -> [ YES ]    NO       (arrows toggle - Enter confirms - y/n direct)" }
+                    else      { "        YES    [ NO ] <-    (arrows toggle - Enter confirms - y/n direct)" }
+            $w = [Math]::Max(60, [Math]::Min([Console]::WindowWidth, 120) - 1)
+            Write-Host ("`r" + $line.PadRight($w)) -NoNewline -ForegroundColor $(if ($sel) { 'Green' } else { 'Red' })
+            $k = [Console]::ReadKey($true)
+            switch ($k.Key) {
+                { $_ -in 'LeftArrow','RightArrow','UpArrow','DownArrow','Tab' } { $sel = -not $sel }
+                'Enter'  { Write-Host ""; return $sel }
+                'Y'      { Write-Host ""; return $true }
+                'N'      { Write-Host ""; return $false }
+                'Escape' { Write-Host ""; return $false }
+            }
+        }
+    } finally { [Console]::CursorVisible = $true }
+}
+
+function Select-Mode {
+    # arrow-key menu: up/down move, Enter confirms; 1/2/3/Q select instantly. Typed fallback for pipes/CI.
+    $items = @(
+        @{ k='1'; name='INSTALL'; desc='scan everything, install what is missing'; note='confirms each';   c='White'    }
+        @{ k='2'; name='AUDIT';   desc='read-only preflight report';               note='changes nothing'; c='Green'    }
+        @{ k='3'; name='AUTO';    desc='unattended install of ALL missing';        note='zero prompts';    c='Yellow'   }
+        @{ k='Q'; name='QUIT';    desc='';                                         note='';                c='DarkGray' }
+    )
+    if (-not (Test-Tui)) {
+        foreach ($it in $items) { Write-Host ("    [{0}]  {1,-8} {2,-42} {3}" -f $it.k, $it.name, $it.desc, $it.note) -ForegroundColor $it.c }
+        return (Read-Host "  mode [1/2/3/q]")
+    }
+    foreach ($it in $items) { Write-Host "" }                  # reserve the rows (handles buffer scroll)
+    $top = [Console]::CursorTop - $items.Count
+    $idx = 0
+    [Console]::CursorVisible = $false
+    try {
+        while ($true) {
+            [Console]::SetCursorPosition(0, $top)
+            $w = [Math]::Max(70, [Math]::Min([Console]::WindowWidth, 120) - 1)
+            for ($i = 0; $i -lt $items.Count; $i++) {
+                $it  = $items[$i]
+                $row = ("    [{0}]  {1,-8} {2,-42} {3}" -f $it.k, $it.name, $it.desc, $it.note).PadRight($w)
+                if ($i -eq $idx) { Write-Host ("  > " + $row.Substring(4)) -ForegroundColor Black -BackgroundColor DarkCyan }
+                else             { Write-Host $row -ForegroundColor $it.c }
+            }
+            $k = [Console]::ReadKey($true)
+            switch ($k.Key) {
+                'UpArrow'   { $idx = ($idx + $items.Count - 1) % $items.Count }
+                'DownArrow' { $idx = ($idx + 1) % $items.Count }
+                'Enter'     { return $items[$idx].k }
+            }
+            $ch = ([string]$k.KeyChar).ToUpper()
+            $hit = @($items | Where-Object { $_.k -eq $ch })
+            if ($hit.Count) { return $hit[0].k }
+        }
+    } finally { [Console]::CursorVisible = $true }
 }
 
 function Run($desc, [scriptblock]$block) {
@@ -123,14 +186,9 @@ Banner
 # --- MENU (skipped when a flag already chose the mode) ----------------------
 if (-not $Yes -and -not $CheckOnly -and -not $DryRun) {
     Write-Host ""
-    Write-Host "    [1]  INSTALL   scan everything, install what's missing   (confirms each)" -ForegroundColor White
-    Write-Host "    [2]  AUDIT     read-only preflight report                (changes nothing)" -ForegroundColor Green
-    Write-Host "    [3]  AUTO      unattended install of ALL missing         (zero prompts)" -ForegroundColor Yellow
-    Write-Host "    [Q]  QUIT" -ForegroundColor DarkGray
+    Write-Host "    arrows move - Enter confirms - or press 1/2/3/q     flags: -CheckOnly -Yes -DryRun -NoUv" -ForegroundColor DarkGray
     Write-Host ""
-    Write-Host "    flags: -CheckOnly -Yes -DryRun -NoUv   (scriptable; skips this menu)" -ForegroundColor DarkGray
-    Write-Host ""
-    $c = Read-Host "  mode [1/2/3/q]"
+    $c = Select-Mode
     switch -Regex ($c) {
         '^2$'    { $script:CheckOnly = $true }
         '^3$'    { $script:Yes = $true }
