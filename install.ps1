@@ -147,12 +147,19 @@ function Add-UserPath($dir) {
     if (($env:Path -split ';') -notcontains $dir) { $env:Path = "$env:Path;$dir" }  # this session too
 }
 
+$INSTALLER_VER = "v5"   # bump on every installer change -> instantly exposes a stale CDN copy
+
 function Banner {
     Write-Host ""
-    Write-Host "  ========================================================================" -ForegroundColor DarkCyan
-    Write-Host "   M K C R E W  ::  multi-agent CLI cockpit  //  native Windows" -ForegroundColor Cyan
-    Write-Host "   bootstrap + preflight  ::  detect -> report -> ask -> install" -ForegroundColor DarkGray
-    Write-Host "  ========================================================================" -ForegroundColor DarkCyan
+    Write-Host "    __  __  _  __  ____  ____   _____ __        __" -ForegroundColor Cyan
+    Write-Host "   |  \/  || |/ / / ___||  _ \ | ____|\ \      / /" -ForegroundColor Cyan
+    Write-Host "   | |\/| || ' / | |    | |_) ||  _|   \ \ /\ / / " -ForegroundColor Cyan
+    Write-Host "   | |  | || . \ | |___ |  _ < | |___   \ V  V /  " -ForegroundColor DarkCyan
+    Write-Host "   |_|  |_||_|\_\ \____||_| \_\|_____|   \_/\_/   " -ForegroundColor DarkCyan
+    Write-Host ""
+    Write-Host "   multi-agent CLI cockpit  //  native Windows  //  psmux inside" -ForegroundColor Cyan
+    Write-Host "   installer $INSTALLER_VER  ::  detect -> report -> ask -> install  ::  no admin needed" -ForegroundColor DarkGray
+    Write-Host ("  " + ("=" * 72)) -ForegroundColor DarkCyan
 }
 
 # --- installers (each: user-scope, best-effort, honest on failure) ----------
