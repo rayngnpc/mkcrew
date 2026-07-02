@@ -40,21 +40,22 @@ $MKCREW_TARBALL    = "https://github.com/rayngnpc/mkcrew/archive/refs/heads/main
 $BinDir            = Join-Path $env:LOCALAPPDATA "Programs\mkcrew\bin"
 
 # --- pretty output (tech-savvy, colour-coded, robust) -----------------------
+# one Write-Host per line (no -NoNewline chains): chained segments split across lines in
+# transcripts/CI logs (proven in the sandbox tests). Whole-line color, journalctl-style.
 function Rule { Write-Host ("  " + ("-" * 70)) -ForegroundColor DarkGray }
-function Sec($t)  { Write-Host ""; Rule; Write-Host "  $t" -ForegroundColor Cyan; Rule }
-function Ok($t)   { Write-Host "  [ OK ] "  -ForegroundColor Green    -NoNewline; Write-Host $t }
-function Warn($t) { Write-Host "  [WARN] "  -ForegroundColor Yellow   -NoNewline; Write-Host $t }
-function Bad($t)  { Write-Host "  [FAIL] "  -ForegroundColor Red      -NoNewline; Write-Host $t }
-function Info($t) { Write-Host "  [ .. ] "  -ForegroundColor DarkCyan -NoNewline; Write-Host $t }
+function Sec($t)  { Write-Host ""; Rule; Write-Host "  :: $t" -ForegroundColor Cyan; Rule }
+function Ok($t)   { Write-Host "  [ OK ] $t" -ForegroundColor Green }
+function Warn($t) { Write-Host "  [WARN] $t" -ForegroundColor Yellow }
+function Bad($t)  { Write-Host "  [FAIL] $t" -ForegroundColor Red }
+function Info($t) { Write-Host "  [ .. ] $t" -ForegroundColor DarkCyan }
 function Have($n) { [bool](Get-Command $n -ErrorAction SilentlyContinue) }
 function Ver($n)  { try { (& $n --version 2>$null | Select-Object -First 1) } catch { "" } }
 
 function Ask($q) {
-    if ($DryRun)    { Write-Host "  ? $q" -ForegroundColor Yellow; return $false }
+    if ($DryRun)    { Write-Host "  ?  $q  [Y/n] -> skipped (dry-run)" -ForegroundColor Yellow; return $false }
     if ($CheckOnly) { return $false }
-    if ($Yes)       { Write-Host "  ? $q  [Y/n] " -ForegroundColor Yellow -NoNewline; Write-Host "Y (auto)"; return $true }
-    Write-Host "  ? $q " -ForegroundColor Yellow -NoNewline
-    Write-Host "[Y/n] " -NoNewline
+    if ($Yes)       { Write-Host "  ?  $q  [Y/n] -> Y (auto)" -ForegroundColor Yellow; return $true }
+    Write-Host "  ?  $q  [Y/n] " -ForegroundColor Yellow -NoNewline   # interactive: cursor stays on the line
     $a = Read-Host
     return ($a -eq "" -or $a -match '^(y|yes)$')
 }
@@ -85,12 +86,10 @@ function Add-UserPath($dir) {
 
 function Banner {
     Write-Host ""
-    Write-Host "  +====================================================================+" -ForegroundColor Cyan
-    Write-Host "  |  " -ForegroundColor Cyan -NoNewline
-    Write-Host "M K C R E W" -ForegroundColor White -NoNewline
-    Write-Host "   native-Windows multi-agent CLI cockpit             |" -ForegroundColor Cyan
-    Write-Host "  |  one-click bootstrap & preflight  -  check, ask, never force       |" -ForegroundColor DarkGray
-    Write-Host "  +====================================================================+" -ForegroundColor Cyan
+    Write-Host "  ========================================================================" -ForegroundColor DarkCyan
+    Write-Host "   M K C R E W  ::  multi-agent CLI cockpit  //  native Windows" -ForegroundColor Cyan
+    Write-Host "   bootstrap + preflight  ::  detect -> report -> ask -> install" -ForegroundColor DarkGray
+    Write-Host "  ========================================================================" -ForegroundColor DarkCyan
 }
 
 # --- installers (each: user-scope, best-effort, honest on failure) ----------
@@ -124,17 +123,19 @@ Banner
 # --- MENU (skipped when a flag already chose the mode) ----------------------
 if (-not $Yes -and -not $CheckOnly -and -not $DryRun) {
     Write-Host ""
-    Write-Host "    [1] " -ForegroundColor Cyan -NoNewline; Write-Host "Install / repair   - check all, install what's missing (asks each)"
-    Write-Host "    [2] " -ForegroundColor Cyan -NoNewline; Write-Host "Check only         - preflight report, install nothing"
-    Write-Host "    [3] " -ForegroundColor Cyan -NoNewline; Write-Host "Unattended         - install everything missing, no prompts"
-    Write-Host "    [Q] " -ForegroundColor Cyan -NoNewline; Write-Host "Quit"
+    Write-Host "    [1]  INSTALL   scan everything, install what's missing   (confirms each)" -ForegroundColor White
+    Write-Host "    [2]  AUDIT     read-only preflight report                (changes nothing)" -ForegroundColor Green
+    Write-Host "    [3]  AUTO      unattended install of ALL missing         (zero prompts)" -ForegroundColor Yellow
+    Write-Host "    [Q]  QUIT" -ForegroundColor DarkGray
     Write-Host ""
-    $c = Read-Host "  Select"
+    Write-Host "    flags: -CheckOnly -Yes -DryRun -NoUv   (scriptable; skips this menu)" -ForegroundColor DarkGray
+    Write-Host ""
+    $c = Read-Host "  mode [1/2/3/q]"
     switch -Regex ($c) {
         '^2$'    { $script:CheckOnly = $true }
         '^3$'    { $script:Yes = $true }
         '^[Qq]$' { Write-Host "  bye."; return }
-        default  { }   # 1 / anything else -> interactive install
+        default  { }   # 1 / Enter / anything else -> interactive install
     }
 }
 
@@ -278,7 +279,7 @@ $req = $script:Missing | Sort-Object -Unique
 if ($req.Count -eq 0) {
     Ok "All required prerequisites are in place."
     if ($CheckOnly) { Write-Host "  (check-only - nothing was installed)" -ForegroundColor DarkGray }
-    else { Write-Host ""; Write-Host "  Next:  open a NEW terminal, then run:  " -NoNewline; Write-Host "mk studio" -ForegroundColor Green }
+    else { Write-Host ""; Write-Host "  next ->  open a NEW terminal, then run:  mk studio" -ForegroundColor Green }
 } else {
     Bad ("Still missing (required): " + ($req -join ", "))
     Write-Host "  Re-run after resolving, or use the notes below." -ForegroundColor DarkGray
@@ -290,5 +291,5 @@ if ($script:Notes.Count -gt 0) {
 }
 Write-Host ""
 Rule
-Write-Host "  Re-check anytime:  " -NoNewline; Write-Host ".\install.bat" -ForegroundColor Cyan -NoNewline; Write-Host " (menu -> Check only)  or  " -NoNewline; Write-Host "mk doctor" -ForegroundColor Cyan
+Write-Host "  re-check anytime ->  .\install.bat  (mode 2: AUDIT)   or   mk doctor" -ForegroundColor Cyan
 Rule
