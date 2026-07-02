@@ -1,4 +1,4 @@
-<#
+﻿<#
 ================================================================================
   MKCREW - one-click bootstrap & preflight for Windows
 --------------------------------------------------------------------------------
@@ -148,7 +148,7 @@ function Add-UserPath($dir) {
     if (($env:Path -split ';') -notcontains $dir) { $env:Path = "$env:Path;$dir" }  # this session too
 }
 
-$INSTALLER_VER = "v1"   # bump on every installer change -> instantly exposes a stale CDN copy
+$INSTALLER_VER = "v2"   # bump on every installer change -> instantly exposes a stale CDN copy
 
 function Banner {
     # clean canvas: the one-liner's own `irm` progress bar (outside our control) erases the top
@@ -231,7 +231,19 @@ if ($pol -in @('Unrestricted','RemoteSigned','Bypass')) {
     }
     if (Ask "Set policy 'RemoteSigned' for your user account? (persistent, no admin/UAC - what uv recommends)") {
         try { Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force; Ok "execution policy now: RemoteSigned (CurrentUser)" }
-        catch { Bad "could not set policy: $($_.Exception.Message)"; $script:Notes += "policy: run  Set-ExecutionPolicy RemoteSigned -Scope CurrentUser" }
+        catch {
+            # PS 5.1 quirk: the cmdlet can throw a bogus 'Security error.' even for CurrentUser scope.
+            # Write the exact same user-scope registry value it writes under the hood (no admin needed).
+            try {
+                $rk = "HKCU:\Software\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell"
+                if (-not (Test-Path $rk)) { New-Item -Path $rk -Force | Out-Null }
+                Set-ItemProperty -Path $rk -Name ExecutionPolicy -Value "RemoteSigned"
+                Ok "execution policy now: RemoteSigned (CurrentUser, via registry)"
+            } catch {
+                Bad "could not set policy: $($_.Exception.Message)"
+                $script:Notes += "policy: run  Set-ExecutionPolicy RemoteSigned -Scope CurrentUser"
+            }
+        }
     } else {
         $script:Notes += "execution policy kept at '$pol': THIS run works, but future installer scripts may refuse. fix anytime:  Set-ExecutionPolicy RemoteSigned -Scope CurrentUser"
     }
