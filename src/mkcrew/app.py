@@ -20,9 +20,16 @@ def _show(url: str) -> bool:
     except ImportError:
         webbrowser.open(url)
         return False
-    webview.create_window("MKCREW", url, width=1200, height=820)
-    webview.start()
-    return True
+    try:
+        webview.create_window("MKCREW", url, width=1200, height=820)
+        # edgechromium ONLY: without it pywebview silently falls back to MSHTML (IE11), which
+        # mangles the Studio UI (seen on stripped Windows/Sandbox where WebView2 isn't installed).
+        # No WebView2 -> raise -> the default browser renders it correctly instead.
+        webview.start(gui="edgechromium")
+        return True
+    except Exception:
+        webbrowser.open(url)
+        return False
 
 
 def main():
