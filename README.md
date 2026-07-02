@@ -38,7 +38,7 @@ existing logins and plans. No headless mode, no API keys, no SDK. MKCREW turns t
 
 ## ✨ Why MKCREW
 
-- 🪟 **Native Windows.** No WSL, no Docker, no Linux VM. Built on [psmux](https://github.com/rayngnpc/psmux-mk), a Windows tmux.
+- 🪟 **Native Windows.** No WSL, no Docker, no Linux VM. Built on [psmux](https://github.com/psmux/psmux), a Windows tmux.
 - 👥 **A real team, visible.** Up to 4 agents — a lead + 3 workers — each in its own pane. Watch them work, or jump into any pane and type.
 - 📜 **Event-sourced.** Every delegation is an append-only event. The control tower (TEAM / JOBS) is rebuilt live from the log — kill the cockpit, relaunch, nothing is lost.
 - 🔌 **Mix providers per pane.** Lead on Claude, workers on Codex + Antigravity? One dropdown each.

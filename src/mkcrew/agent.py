@@ -409,13 +409,23 @@ def write_launch_cmd(role: str, model: str, project_dir,
     # global codex keeps auto-updating normally outside MKCREW. ponytail: env flag, no global edits.
     codex_env = ('set "LAZYCODEX_AUTO_UPDATE_DISABLED=1"\r\n'
                  'set "OMO_CODEX_AUTO_UPDATE_DISABLED=1"\r\n') if provider == "codex" else ""
+    # Relaunch loop: codex's NATIVE updater (and any crash/quit) can still drop the pane to a bare
+    # shell, and users don't remember the bypass/resume flags. The pane itself remembers: any key
+    # re-runs the SAME command with the same env. ponytail: same baked argv on relaunch - a fresh-start
+    # command starts a fresh session (use the CLI's own /resume to recover context if needed).
     p.write_text(
         "@echo off\r\n"
         f'cd /d "{Path(project_dir)}"\r\n'
         f'set "PATH={path_dirs};%PATH%"\r\n'
         f'set "MK_ACTOR={role}"\r\n'
         f"{codex_env}"
-        f"{agent_cmd}\r\n",
+        ":mkcrew_relaunch\r\n"
+        f"{agent_cmd}\r\n"
+        "echo(\r\n"
+        f"echo [MKCREW] {role} CLI exited (quit / crash / self-update).\r\n"
+        "echo [MKCREW] Press any key to relaunch it with the same setup - or Ctrl-b x to close this pane.\r\n"
+        "pause >nul\r\n"
+        "goto mkcrew_relaunch\r\n",
         encoding="utf-8")
     return p
 
