@@ -442,3 +442,26 @@ def test_deliver_antigravity_types_doorbell_pointer_not_task(tmp_path, monkeypat
     # doorbell IS the delivery (no pull to await) -> mark injected so the watchdog won't re-type
     # it mid-task or give up on a long-running agy task.
     assert j.status == "DELIVERED" and any(e.get("label") == "injected" for e in j.events)
+
+
+# --- teammates-FYI envelope: parallel workers get told what else is in flight ---
+
+def test_inbox_includes_teammates_fyi_when_others_in_flight(tmp_path, monkeypatch):
+    """Two parallel asks: worker2's inbox names worker1's in-flight job (same-checkout collision
+    avoidance) + the mk pend hint; worker1's task text itself is the envelope's first line."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    d = Mkd(mux=FakeMux())
+    d.register_agent("worker1", pane_id="%1")
+    d.register_agent("worker2", pane_id="%2")
+    j1 = d.jobs.open(frm="main", to="worker1", text="refactor auth module\nmore detail")
+    d._deliver(j1)
+    j2 = d.jobs.open(frm="main", to="worker2", text="write docs")
+    d._deliver(j2)
+
+    inbox2 = (config.agent_inbox_dir("worker2") / f"{j2.id}.md").read_text(encoding="utf-8")
+    assert "write docs" in inbox2
+    assert f"worker1 <- {j1.id}: refactor auth module" in inbox2   # first line only, teammate named
+    assert "mk pend" in inbox2                                      # the live-list hint
+    # worker1 was delivered FIRST (nothing else in flight then) -> its inbox has NO FYI
+    inbox1 = (config.agent_inbox_dir("worker1") / f"{j1.id}.md").read_text(encoding="utf-8")
+    assert "FYI" not in inbox1

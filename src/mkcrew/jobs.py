@@ -40,6 +40,13 @@ class JobStore:
             self._emit("job.created", jid, frm, {"frm": frm, "to": to, "text": text})
         return job
 
+    def active_others(self, exclude_id: str) -> list:
+        """Non-terminal jobs OTHER than `exclude_id` — the teammates-FYI source for inbox envelopes
+        (all agents edit the same checkout; naming what's in flight lets them avoid collisions)."""
+        with self._lock:
+            return [j for j in self._jobs.values()
+                    if j.id != exclude_id and j.status in {"PENDING", "DELIVERED"}]
+
     def mark_delivered(self, job_id: str) -> None:
         with self._lock:
             job = self._jobs[job_id]

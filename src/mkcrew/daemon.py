@@ -114,8 +114,18 @@ class Mkd:
         self._check_budget()
 
     def _write_inbox(self, job) -> None:
-        """Write the per-job task body to the worker's inbox (always invisible)."""
-        (config.agent_inbox_dir(job.to) / f"{job.id}.md").write_text(job.text, encoding="utf-8")
+        """Write the per-job task body to the worker's inbox (always invisible). A short teammates-FYI
+        rides along when other jobs are in flight: every agent edits the SAME checkout, so naming the
+        other open tasks lets parallel workers self-avoid file collisions (`mk pend` = the live list)."""
+        body = job.text
+        others = self.jobs.active_others(job.id)
+        if others:
+            fyi = "\n".join(f"- {j.to} <- {j.id}: {(j.text or '').splitlines()[0][:90]}"
+                            for j in others[:3])
+            body += ("\n\n---\nFYI: teammates are working in this SAME checkout right now:\n"
+                     f"{fyi}\n"
+                     "Do not edit files their tasks clearly own; run `mk pend` if unsure.")
+        (config.agent_inbox_dir(job.to) / f"{job.id}.md").write_text(body, encoding="utf-8")
 
     def _wake(self, role: str) -> None:
         """Nudge an idle worker into taking a turn so its turn-end Stop hook pulls the queued task
