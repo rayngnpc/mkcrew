@@ -4,9 +4,8 @@ no args -> the desktop app; a daemon/core-view/done token -> that helper; an mk 
 So one .exe covers app + browser + CLI + every internal command the cockpit spawns."""
 import sys
 
-# mk subcommands handled by the CLI dispatcher (cli.main reads sys.argv[1] itself).
-_MK = {"start", "attach", "kill", "panic", "pend", "trace", "repair", "verify", "resume",
-       "tui", "layout", "relayout", "ask", "status", "init", "studio", "add"}
+# mk subcommands route to the CLI dispatcher via cli.COMMANDS itself — a hand-maintained mirror
+# list went stale (doctor/open/workspaces missing -> "MKCREW.exe doctor" opened the app window).
 
 
 def main():
@@ -37,9 +36,12 @@ def main():
         except Exception as e:
             gui = f"webview MISSING ({type(e).__name__})"
         print(f"MKCREW.exe ok | frozen={frozen.is_frozen()} | psmux={frozen.psmux_exe()} | {gui}")
-    elif sub in _MK:
-        from mkcrew import cli; cli.main()   # argv[1] is the subcommand it expects
     else:
+        if sub:
+            from mkcrew import cli
+            if sub in cli.COMMANDS:
+                cli.main()                                 # argv[1] is the subcommand it expects
+                return
         from mkcrew import frozen; frozen.hide_console()   # no stray cmd window behind the app
         from mkcrew import app; app.main()                 # no/unknown arg -> the desktop window
 
