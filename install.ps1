@@ -24,6 +24,7 @@
 param([switch]$Yes, [switch]$CheckOnly, [switch]$DryRun, [switch]$NoUv)
 
 $ErrorActionPreference = "Stop"
+$ProgressPreference    = "SilentlyContinue"   # PS 5.1 progress bars clobber console rows + slow downloads ~10x
 $Root = $PSScriptRoot   # empty when piped via `irm ... | iex` (no script file on disk)
 $FromClone = [bool]$Root -and (Test-Path (Join-Path $Root "pyproject.toml"))  # clone (editable) vs remote one-liner
 $script:Missing = @()   # REQUIRED items still missing when we finish
@@ -147,9 +148,12 @@ function Add-UserPath($dir) {
     if (($env:Path -split ';') -notcontains $dir) { $env:Path = "$env:Path;$dir" }  # this session too
 }
 
-$INSTALLER_VER = "v5"   # bump on every installer change -> instantly exposes a stale CDN copy
+$INSTALLER_VER = "v6"   # bump on every installer change -> instantly exposes a stale CDN copy
 
 function Banner {
+    # clean canvas: the one-liner's own `irm` progress bar (outside our control) erases the top
+    # console rows when it clears - it decapitated the logo. Interactive only; never in pipes/CI.
+    if (Test-Tui) { try { Clear-Host } catch {} }
     Write-Host ""
     Write-Host "    __  __  _  __  ____  ____   _____ __        __" -ForegroundColor Cyan
     Write-Host "   |  \/  || |/ / / ___||  _ \ | ____|\ \      / /" -ForegroundColor Cyan
