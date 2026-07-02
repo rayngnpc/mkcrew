@@ -62,8 +62,14 @@ function Ask($q) {
 function Run($desc, [scriptblock]$block) {
     if ($DryRun) { Info "DRYRUN would: $desc"; return $true }
     Info $desc
-    try { & $block; return $true }
+    # Native tools (uv/cargo/npm) write progress to STDERR. In PS 5.1, unredirected stderr never reaches
+    # transcripts/logs (failures showed NO reason), and under $ErrorActionPreference=Stop a stderr line can
+    # abort the block MID-INSTALL. Relax EAP for the block and merge 2>&1 so every line is visible + logged.
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try   { & $block 2>&1 | ForEach-Object { Write-Host "    $_" }; return $true }
     catch { Bad "$desc  ->  $($_.Exception.Message)"; return $false }
+    finally { $ErrorActionPreference = $prevEAP }
 }
 
 function Add-UserPath($dir) {
@@ -172,7 +178,7 @@ if ((Have "uv") -and -not $NoUv) {
     if ($already) { Ok "MKCREW already installed  (mk on PATH: $((Get-Command mk).Source))" }
     $go = if ($already) { Ask "Reinstall/upgrade MKCREW?" } else { Ask "Install MKCREW now ($mkDesc ; pulls Python 3.12 + textual)?" }
     if ($go) {
-        Run $mkDesc { & uv tool install @mkArgs --force; & uv tool update-shell }
+        $null = Run $mkDesc { & uv tool install @mkArgs --force; & uv tool update-shell }
         # VERIFY the `mk` shim actually exists -- uv can print success yet fail (e.g. a git+ source with no
         # git), and a native non-zero exit does NOT throw in PS 5.1. Trust the shim on disk, not the exit code.
         if (-not $DryRun) {
