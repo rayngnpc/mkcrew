@@ -192,3 +192,18 @@ def test_padding_carries_bold_so_a_pane_keeps_it():
     assert coreview._cell("hi", 6, coreview._CYAN).endswith("\033[1m    \033[0m")   # coloured cell pad
     assert coreview._pad_line("abc", 6).endswith("\033[1m   \033[0m")               # box-level top-up
     assert coreview._pad_line("abc", 3) == "abc"                                    # no pad needed
+
+
+def test_render_core_blocked_asker_shows_waiting_not_idle():
+    """A role with an in-flight OUTGOING ask renders 'waiting→<to>', never 'idle' — mk ask blocks the
+    asker, and labelling a blocked lead 'idle' made a working cockpit look dead to the user."""
+    agents = {"worker2": {"state": "running", "task": "hero imagery"}}
+    roster = [{"role": "main", "provider": "claude"}, {"role": "worker2", "provider": "codex"}]
+    inflight = [JobView(id="j1", frm="main", to="worker2", status="DELIVERED")]
+    out = coreview.render_core(agents, inflight, roster=roster)
+    assert "waiting→worker2" in out                      # the blocked lead says WHO it waits on
+    done = [JobView(id="j1", frm="main", to="worker2", status="DONE")]
+    out2 = coreview.render_core(agents, done, roster=roster)
+    assert "waiting→" not in out2                        # terminal job -> back to idle
+    outh = coreview.render_core(agents, inflight, roster=roster, orient="h")
+    assert "waiting→worker2" in outh                     # side-by-side strip too

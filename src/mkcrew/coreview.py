@@ -36,9 +36,24 @@ def _state_color(s):
         return _RED
     if any(k in t for k in ("done", "reachable", "complete")):
         return _LIME
-    if any(k in t for k in ("run", "work", "busy", "deliver", "inject", "pending", "rewake")):
+    if any(k in t for k in ("run", "work", "busy", "deliver", "inject", "pending", "rewake", "wait")):
         return _AMBER
     return _DIM                                              # idle / unknown
+
+
+_TERMINAL_STATUSES = ("done", "fail", "panic", "giveup", "cancel")
+
+
+def _waiting_on(role, jobs):
+    """The teammate `role` is BLOCKED waiting on (its newest in-flight outgoing ask), or None.
+    `mk ask` blocks the asker until the reply lands — so an agent with a non-terminal outgoing job
+    is 'waiting -> to', NOT 'idle' (labelling a blocked lead 'idle' hid a working cockpit from the
+    user: the lead pane looks silent while the tower said nothing was happening)."""
+    for j in reversed(list(jobs or [])):
+        if getattr(j, "frm", None) == role and \
+                not any(k in (getattr(j, "status", "") or "").lower() for k in _TERMINAL_STATUSES):
+            return getattr(j, "to", None)
+    return None
 
 
 def _grid(headers, rows, styles=None):
@@ -161,20 +176,29 @@ def _status_rail(agents, jobs, roster):
             f"{_DIM}latest {_state_color(latest)}{latest}{_R}")
 
 
-def _team_block(agents, roster):
+def _team_block(agents, roster, jobs=()):
     """TEAM section as a compact roster table: role, CLI, state, and current task at a glance."""
     out = [_label("TEAM")]
     rows = []
+
+    def _st(role, info):
+        state = info.get("state", "idle")
+        if state in ("idle", "", "-", None):                 # blocked asker is WAITING, never 'idle'
+            to = _waiting_on(role, jobs)
+            if to:
+                return f"waiting→{to}"
+        return state
+
     if roster:
         for a in roster:
             role = a.get("role", "?")
             info = agents.get(role, {})
-            state = info.get("state", "idle")
-            rows.append((role, a.get("provider", "claude"), state, info.get("task") or info.get("job") or "-"))
+            rows.append((role, a.get("provider", "claude"), _st(role, info),
+                         info.get("task") or info.get("job") or "-"))
     elif agents:
         for name, info in agents.items():
-            state = info.get("state", "idle")
-            rows.append((name, info.get("provider", "agent"), state, info.get("task") or info.get("job") or "-"))
+            rows.append((name, info.get("provider", "agent"), _st(name, info),
+                         info.get("task") or info.get("job") or "-"))
     if not rows:
         out.append(f"  {_DIM}(none){_R}")
         return out
@@ -182,7 +206,7 @@ def _team_block(agents, roster):
     columns = [
         ("ROLE", _width("ROLE", [r[0] for r in rows], 14)),
         ("CLI", _width("CLI", [r[1] for r in rows], 10)),
-        ("STATE", _width("STATE", [r[2] for r in rows], 12)),
+        ("STATE", _width("STATE", [r[2] for r in rows], 16)),   # fits 'waiting→worker2'
         ("TASK", _width("TASK", [r[3] for r in rows], 34, floor=18)),
     ]
     out.extend(_table_header(columns))
@@ -317,14 +341,23 @@ def _compact_core(agents, jobs, recent, roster, width=30):
 
     rows.append(("l", _label("TEAM")))
     team_rows = []
+
+    def _st(role, info):                                     # compact rail: '→worker2' fits the 8-cell
+        state = info.get("state", "idle")
+        if state in ("idle", "", "-", None):
+            to = _waiting_on(role, jobs)
+            if to:
+                return f"→{to}"
+        return state
+
     if roster:
         for a in roster:
             role = a.get("role", "?")
             info = agents.get(role, {})
-            team_rows.append((role, a.get("provider", "claude"), info.get("state", "idle")))
+            team_rows.append((role, a.get("provider", "claude"), _st(role, info)))
     elif agents:
         for role, info in agents.items():
-            team_rows.append((role, info.get("provider", "agent"), info.get("state", "idle")))
+            team_rows.append((role, info.get("provider", "agent"), _st(role, info)))
     if not team_rows:
         rows.append(("l", f"  {_DIM}(none){_R}"))
     else:
@@ -371,7 +404,7 @@ def render_core(agents, jobs, recent=5, roster=None, orient="v", compact=False, 
     width is `width + 4`; the caller sizes the column to match so it never wraps)."""
     if compact:
         return _compact_core(agents, jobs, recent, roster, width)
-    team, jobsb = _team_block(agents, roster), _jobs_block(jobs, recent)
+    team, jobsb = _team_block(agents, roster, jobs), _jobs_block(jobs, recent)
     rail = _status_rail(agents, jobs, roster)
     headline = f"{_CYAN}{_B}MKCREW core{_R}   {rail}"
     if orient == "h":
