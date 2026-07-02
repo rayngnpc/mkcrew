@@ -148,7 +148,7 @@ function Add-UserPath($dir) {
     if (($env:Path -split ';') -notcontains $dir) { $env:Path = "$env:Path;$dir" }  # this session too
 }
 
-$INSTALLER_VER = "v2"   # bump on every installer change -> instantly exposes a stale CDN copy
+$INSTALLER_VER = "v3"   # bump on every installer change -> instantly exposes a stale CDN copy
 
 function Banner {
     # clean canvas: the one-liner's own `irm` progress bar (outside our control) erases the top
@@ -178,6 +178,19 @@ function Install-Rust {
     & $ri -y --no-modify-path
     Add-UserPath (Join-Path $env:USERPROFILE ".cargo\bin")
 }
+function Install-NodePortable {
+    # official portable zip -> user-scope, no winget, no MSI, no admin. npm ships inside.
+    $idx = Invoke-RestMethod "https://nodejs.org/dist/index.json"
+    $v   = ($idx | Where-Object { $_.lts } | Select-Object -First 1).version    # newest LTS, e.g. v22.14.0
+    $zip = Join-Path $env:TEMP "node-lts.zip"
+    Invoke-RestMethod "https://nodejs.org/dist/$v/node-$v-win-x64.zip" -OutFile $zip
+    Expand-Archive -Path $zip -DestinationPath $env:TEMP -Force
+    $dest = Join-Path $env:LOCALAPPDATA "Programs\mkcrew\node"
+    if (Test-Path $dest) { Remove-Item -Recurse -Force $dest }
+    Move-Item (Join-Path $env:TEMP "node-$v-win-x64") $dest
+    Add-UserPath $dest
+}
+
 function Install-PsmuxBinary($url) {
     $zip = Join-Path $env:TEMP "psmux-mkcrew.zip"
     $tmp = Join-Path $env:TEMP "psmux-mkcrew"
@@ -341,11 +354,18 @@ if (Have "node") {
     Warn "Node.js not found - opencode and some CLIs need it."
     if (Have "winget") {
         if (Ask "Install Node LTS via winget? (winget may prompt for admin)") {
-            Run "winget install OpenJS.NodeJS.LTS" { & winget install --id OpenJS.NodeJS.LTS -e --source winget --accept-package-agreements --accept-source-agreements }
-        } else { $script:Notes += "Node.js: install later from https://nodejs.org/ (LTS)." }
-    } else {
-        $script:Notes += "Node.js: winget not present - install LTS from https://nodejs.org/ then re-run."
+            if (Run "winget install OpenJS.NodeJS.LTS" { & winget install --id OpenJS.NodeJS.LTS -e --source winget --accept-package-agreements --accept-source-agreements }) {
+                $env:Path = [Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [Environment]::GetEnvironmentVariable("Path","User") + ";" + $env:Path
+            }
+        }
     }
+    if (-not (Have "node")) {                                              # no winget / declined / failed
+        if (Ask "Download portable Node LTS instead? (official zip, user-scope, no admin)") {
+            Run "portable Node LTS -> $(Join-Path $env:LOCALAPPDATA 'Programs\mkcrew\node')" { Install-NodePortable } | Out-Null
+        }
+    }
+    if (Have "node") { Ok "node ready  ($(Ver node))" }
+    else { $script:Notes += "Node.js: install LTS from https://nodejs.org/ then re-run." }
 }
 
 # --- AGENT CLIs (need >= 1; each needs its own login) -----------------------
@@ -358,8 +378,11 @@ if ($agents) {
     if (Have "node") {
         if (Ask "Install the Claude Code CLI now (npm i -g @anthropic-ai/claude-code)?") {
             if (Run "npm i -g @anthropic-ai/claude-code" { & npm install -g "@anthropic-ai/claude-code" }) {
+                $npmg = (& npm prefix -g 2>$null | Out-String).Trim()          # portable-zip npm puts shims here, off PATH
+                if ($npmg -and (Test-Path $npmg)) { Add-UserPath $npmg }
+                if (Have "claude") { Ok "claude CLI installed" }
                 $script:Notes += "Claude installed - run `claude` ONCE to log in (interactive; no script can do this for you)."
-            }
+            } else { $script:Missing += "agent-cli" }
         } else { $script:Missing += "agent-cli" }
     } else {
         $script:Notes += "Install an agent CLI after Node, e.g.  npm i -g @anthropic-ai/claude-code  (then run `claude` to log in)."
