@@ -42,9 +42,9 @@ TEMPLATES = [
              "Agents in side-by-side columns with a core status strip."),
     Template("lead-left-ide", "LEAD LEFT + Files IDE", EXPERIMENTAL, True,
              "LEAD LEFT plus the files IDE pane (core | explorer | editor). Experimental."),
-    # Studio / mk-start only (mk add can't build paged grids): core-based, no files-IDE.
+    # At mk-add scale (<=4 agents) a pages workspace is ONE page: agent grid + core strip in its tab.
     Template("pages", "Pages", NORMAL, False,
-             "Agents across paged grid windows, each with a core strip.", add_capable=False),
+             "Agents across paged grid windows, each with a core strip."),
 ]
 
 _BY_KEY = {t.key: t for t in TEMPLATES}

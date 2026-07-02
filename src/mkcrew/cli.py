@@ -819,7 +819,7 @@ def cmd_add(argv):
         mux.select_layout(win, "tiled")
         mux.set_pane_title(files_pid, "files - core | explorer | editor")
     elif layout != "main-vertical":                                        # NORMAL/plain: core pane, LAST cell
-        orient = "h" if layout == "even-horizontal" else "v"
+        orient = "h" if layout in ("even-horizontal", "pages") else "v"    # wide/short strips render side-by-side
         core_pid = mux.split_window(win, frozen.core_view_cmd(str(project), orient))
         mux.select_layout(win, "tiled")
         mux.set_pane_title(core_pid, "core - control tower")
@@ -832,6 +832,9 @@ def cmd_add(argv):
             w, h, pid[1:], core_pid[1:], [p[1:] for p in worker_pids]))
     elif layout == "even-horizontal":                                      # NORMAL SIDE-BY-SIDE: agent row + core strip
         mux.select_layout(win, layouts._sidebyside_core_layout(
+            w, h, [pid[1:]] + [p[1:] for p in worker_pids], core_pid[1:]))
+    elif layout == "pages":                                                # PAGES page: agent GRID + core strip
+        mux.select_layout(win, layouts._grid_strip_layout(                 # (<=4 agents -> a single page/tab)
             w, h, [pid[1:]] + [p[1:] for p in worker_pids], core_pid[1:]))
     elif layout == "tiled":                                                # GRID: even grid of agents + core
         ids = [pid[1:]] + [p[1:] for p in worker_pids] + [core_pid[1:]]    # numeric ids, in creation order

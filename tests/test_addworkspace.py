@@ -494,6 +494,39 @@ def test_cmd_add_launches_team_in_layout(monkeypatch, tmp_path):
     assert ("layout", "tiled") in calls                                # chosen layout applied
 
 
+def test_cmd_add_pages_builds_grid_plus_core_strip(monkeypatch, tmp_path):
+    """`mk add --template pages`: agents spawn + a core strip (side-by-side 'h' render), and the
+    grid-strip layout is applied — pages is wizard-addable now (<=4 agents = a single page tab)."""
+    from mkcrew import cli, templates
+    assert "pages" in {t.key for t in templates.wizard_templates()}     # offered by the wizard
+    calls = []
+
+    class FakeMux:
+        def new_window(self, session, window, command, cwd=None):
+            calls.append(("new_window", window, command)); return "%0"
+        def split_window(self, target, command, vertical=True, size=None):
+            calls.append(("split", command)); return f"%{len(calls)}"
+        def set_pane_title(self, pid, title): pass
+        def select_layout(self, target, layout="tiled"):
+            calls.append(("layout", layout))
+        def window_size(self, target): return (250, 60)
+
+    grid_args = {}
+    orig_grid = cli.layouts._grid_strip_layout
+    monkeypatch.setattr(cli, "PsmuxBackend", lambda: FakeMux())
+    monkeypatch.setattr(cli, "_session_exists", lambda mux, session: True)
+    monkeypatch.setattr(cli.layouts, "_launch", lambda a, proj: ["AGENT", a["role"]])
+    monkeypatch.setattr(cli.layouts, "_grid_strip_layout",
+                        lambda w, h, agents, core: grid_args.update(agents=agents, core=core)
+                        or orig_grid(w, h, agents, core))
+    cli.cmd_add([str(tmp_path), "--agents", "3", "--template", "pages"])
+    core_splits = [c for c in calls if c[0] == "split" and c[1][0] != "AGENT"]
+    assert len(core_splits) == 1                                        # exactly one core strip pane
+    assert '"h"' in " ".join(map(str, core_splits[0][1])) or "h" in core_splits[0][1]  # side-by-side render
+    assert len(grid_args["agents"]) == 3 and grid_args["core"]         # grid cells: 3 agents + core strip
+    assert calls[-1][0] == "layout" and calls[-1][1] not in ("tiled", "pages")  # final = custom layout string
+
+
 def test_cmd_add_per_agent_providers_models(monkeypatch, tmp_path):
     """`mk add --providers claude,codex --models a,b --agents 2` yields a 2-agent team whose agents
     carry providers claude/codex and models a/b respectively (the wizard's comma-list path)."""
@@ -548,15 +581,15 @@ def test_addworkspace_picker_removes_gemini_and_uses_template_labels():
 
 def test_template_picker_groups_registry_normal_and_experimental():
     """The Layout step groups the FROZEN templates registry: 'Normal' = add-capable core layouts
-    (main-vertical / even-horizontal), 'Experimental' = the files-IDE layout (lead-left-ide).  No
-    second 'Plain' mode, and the non-add-capable registry entry (pages) is NOT offered."""
+    (main-vertical / even-horizontal / pages), 'Experimental' = the files-IDE layout (lead-left-ide).
+    Pages IS offered (parity with Studio; at add scale it's one grid+core-strip page tab)."""
     from mkcrew.addworkspace import _NORMAL_TEMPLATES, _EXPERIMENTAL_TEMPLATES, _DEFAULT_TEMPLATE_KEY
-    assert [t.key for t in _NORMAL_TEMPLATES] == ["main-vertical", "even-horizontal"]   # two, in order
+    assert [t.key for t in _NORMAL_TEMPLATES] == ["main-vertical", "even-horizontal", "pages"]  # in order
     assert [t.key for t in _EXPERIMENTAL_TEMPLATES] == ["lead-left-ide"]                # one experimental
     assert _DEFAULT_TEMPLATE_KEY == "main-vertical"                    # default = first Normal option
     offered = {t.key for t in _NORMAL_TEMPLATES + _EXPERIMENTAL_TEMPLATES}
     assert offered == {t.key for t in templates.wizard_templates()}   # exactly the add-capable set
-    assert "pages" not in offered                                     # non-add-capable NOT offered
+    assert "pages" in offered                                          # parity with Studio
 
 
 def test_codex_roster_adds_gpt54_and_mini_with_effort_lists():
