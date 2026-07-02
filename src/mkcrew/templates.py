@@ -28,7 +28,7 @@ class Template:
     desc: str
     add_capable: bool = True   # offered by `mk add` (the wizard). pages/dashboard are mk-start/Studio only.
     min_agents: int = 1
-    max_agents: int = 8
+    max_agents: int = 4      # hard cap everywhere (studio 2-4, wizard 1-4, mk add <=4): layouts fit <=4 agents
 
     def to_dict(self):
         return asdict(self)

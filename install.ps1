@@ -148,7 +148,7 @@ function Add-UserPath($dir) {
     if (($env:Path -split ';') -notcontains $dir) { $env:Path = "$env:Path;$dir" }  # this session too
 }
 
-$INSTALLER_VER = "v3"   # bump on every installer change -> instantly exposes a stale CDN copy
+$INSTALLER_VER = "v4"   # bump on every installer change -> instantly exposes a stale CDN copy
 
 function Banner {
     # clean canvas: the one-liner's own `irm` progress bar (outside our control) erases the top
@@ -376,19 +376,31 @@ if ($agents) {
 } else {
     Warn "No agent CLI found (claude / codex / opencode / agy) - the team has nothing to run."
     if (Have "node") {
-        if (Ask "Install the Claude Code CLI now (npm i -g @anthropic-ai/claude-code)?") {
-            if (Run "npm i -g @anthropic-ai/claude-code" { & npm install -g "@anthropic-ai/claude-code" }) {
-                $npmg = (& npm prefix -g 2>$null | Out-String).Trim()          # portable-zip npm puts shims here, off PATH
-                if ($npmg -and (Test-Path $npmg)) { Add-UserPath $npmg }
-                if (Have "claude") { Ok "claude CLI installed" }
-                $script:Notes += "Claude installed - run `claude` ONCE to log in (interactive; no script can do this for you)."
-            } else { $script:Missing += "agent-cli" }
-        } else { $script:Missing += "agent-cli" }
+        # npm-installable CLIs, offered INDIVIDUALLY (never forced). AUTO installs ONLY claude:
+        # unattended can't choose, and one CLI is all the team needs - the rest stay opt-in.
+        $clis = @(
+            @{ n = "claude";   pkg = "@anthropic-ai/claude-code"; auto = $true  }
+            @{ n = "codex";    pkg = "@openai/codex";             auto = $false }
+            @{ n = "opencode"; pkg = "opencode-ai";               auto = $false }
+        )
+        $got = @()
+        foreach ($cli in $clis) {
+            if ($Yes -and -not $cli.auto) { Info "skipped $($cli.n) (AUTO installs only claude - re-run mode 1 to add more)"; continue }
+            if (Ask "Install the $($cli.n) CLI? (npm i -g $($cli.pkg))") {
+                if (Run "npm i -g $($cli.pkg)" { & npm install -g $cli.pkg }) {
+                    $npmg = (& npm prefix -g 2>$null | Out-String).Trim()      # portable-zip npm puts shims here, off PATH
+                    if ($npmg -and (Test-Path $npmg)) { Add-UserPath $npmg }
+                    if (Have $cli.n) { Ok "$($cli.n) CLI installed"; $got += $cli.n }
+                }
+            }
+        }
+        if ($got.Count) { $script:Notes += "Log in ONCE per installed CLI (run  $($got -join ' / ')  interactively; no script can do that for you)." }
+        else { $script:Missing += "agent-cli" }
     } else {
         $script:Notes += "Install an agent CLI after Node, e.g.  npm i -g @anthropic-ai/claude-code  (then run `claude` to log in)."
         $script:Missing += "agent-cli"
     }
-    $script:Notes += "Other CLIs: codex, opencode, agy - install per their docs; each is auto-detected on next run."
+    $script:Notes += "agy (Antigravity): install per its docs - auto-detected on next run."
 }
 
 # --- SUMMARY ----------------------------------------------------------------
