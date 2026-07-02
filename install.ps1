@@ -148,7 +148,7 @@ function Add-UserPath($dir) {
     if (($env:Path -split ';') -notcontains $dir) { $env:Path = "$env:Path;$dir" }  # this session too
 }
 
-$INSTALLER_VER = "v6"   # bump on every installer change -> instantly exposes a stale CDN copy
+$INSTALLER_VER = "v1"   # bump on every installer change -> instantly exposes a stale CDN copy
 
 function Banner {
     # clean canvas: the one-liner's own `irm` progress bar (outside our control) erases the top
