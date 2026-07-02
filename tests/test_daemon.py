@@ -1053,3 +1053,42 @@ def test_thorough_mode_widens_stall_patience(tmp_path, monkeypatch):
         results[mode] = d.jobs.get(job.id).status
     assert results["standard"] in ("INCOMPLETE",), results           # standard gave up
     assert results["thorough"] == "DELIVERED", results               # thorough is still patient
+
+
+# --- deep-work ceiling + late results (the 40-min codex case) ---
+
+def test_ask_ceiling_triples_only_in_thorough(tmp_path, monkeypatch):
+    """thorough mode: the lead's blocking-ask ceiling triples (1800 -> 5400); standard/fast are
+    byte-identical to before (regression guard)."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    assert Mkd(mux=FakeMux(), mode="thorough")._ask_ceiling(1800) == 5400
+    assert Mkd(mux=FakeMux(), mode="standard")._ask_ceiling(1800) == 1800
+    assert Mkd(mux=FakeMux(), mode="fast")._ask_ceiling(1800) == 1800
+
+
+def test_late_artifact_surfaces_to_lead_instead_of_dropping(tmp_path, monkeypatch):
+    """A worker that finishes AFTER its ask timed out (job INCOMPLETE, out of the in-flight set):
+    the finish artifact must NOT be silently skipped — the ledger records '[late] <reply>' +
+    a late_done event, and the LEAD's pane gets a visible 'do NOT re-delegate' line. A second
+    poll must not duplicate the notification."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    mux = FakeMux()
+    d = Mkd(mux=mux)
+    d.register_agent("main", pane_id="%0")
+    d.register_agent("worker2", pane_id="%5")
+    job = d.jobs.open(frm="main", to="worker2", text="deep task")
+    d._deliver(job)
+    d.jobs.complete(job.id, reply="[timeout] no response", status="INCOMPLETE")   # the ask gave up
+    art = config.agent_finish_dir("worker2") / "done-late.json"
+    art.write_text(json.dumps({"job_id": job.id, "reply": "hero imagery shipped"}), encoding="utf-8")
+
+    d._poll_once()
+    j = d.jobs.get(job.id)
+    assert j.status == "INCOMPLETE"                                   # history not rewritten...
+    assert j.reply == "[late] hero imagery shipped"                   # ...but the real outcome recorded
+    assert any(e.get("label") == "late_done" for e in j.events)
+    late_lines = [l for p, l in mux.lines if p == "%0" and "LATE RESULT" in l]
+    assert len(late_lines) == 1 and "worker2" in late_lines[0] and "re-delegate" in late_lines[0]
+
+    d._poll_once()                                                    # artifact consumed exactly once
+    assert len([l for p, l in mux.lines if "LATE RESULT" in l]) == 1

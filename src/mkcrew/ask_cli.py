@@ -25,7 +25,9 @@ def _post(path: str, payload: dict) -> dict:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=1830) as r:   # blocking: waits for the worker's reply
+        # Socket cap = dead-daemon FAILSAFE, not the ask ceiling: the daemon owns the timeout and
+        # always replies first (1800s, or 5400s in thorough mode) — this only has to outlast 5400.
+        with urllib.request.urlopen(req, timeout=5430) as r:   # blocking: waits for the worker's reply
             return json.loads(r.read())
     except (urllib.error.URLError, ConnectionRefusedError) as exc:
         sys.exit(f"error: mkd not reachable — run `mk start` first ({exc})")

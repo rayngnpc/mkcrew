@@ -55,6 +55,20 @@ class JobStore:
             job.events.append({"ts": time.time(), "label": "delivered"})
             self._emit("job.delivered", job_id, job.to, {})
 
+    def late_reply(self, job_id: str, reply: str) -> bool:
+        """A worker finished AFTER its job was timed out (INCOMPLETE): record the real outcome in
+        the ledger instead of dropping it. Returns True only when applied (job exists, INCOMPLETE,
+        and no late reply recorded yet) — every other status is a no-op, so heartbeats/stale
+        artifacts can never rewrite history."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None or job.status != "INCOMPLETE" or job.reply.startswith("[late]"):
+                return False
+            job.reply = f"[late] {reply}"
+            job.events.append({"ts": time.time(), "label": "late_done"})
+            self._emit("job.late_done", job_id, job.to, {"reply": reply})
+        return True
+
     def complete(self, job_id: str, reply: str, status: str = "DONE") -> None:
         with self._lock:
             job = self._jobs[job_id]

@@ -199,6 +199,28 @@ class Mkd:
         self._wd.pop(job.id, None)
         self._on_job_completed(job.id, status="INCOMPLETE")
 
+    def _ask_ceiling(self, timeout: float) -> float:
+        """thorough mode expects DEEP work: triple the lead's blocking-ask ceiling (1800s -> 90 min).
+        Every other mode is unchanged. (Live case: codex legitimately worked 40+ min and the 30-min
+        ask timed it out TWICE — the work survived on disk but the reply was lost.)"""
+        return timeout * (3 if self.mode == "thorough" else 1)
+
+    def _late_result(self, job_id, agent, reply) -> None:
+        """A finish artifact for an already-timed-out job: the WORK is real (it's on disk) — surface
+        it to the lead instead of dropping it, so a longer-than-ceiling task ends as a visible late
+        success ('integrate, don't re-delegate') instead of a silent loss."""
+        if not job_id or not self.jobs.late_reply(job_id, reply):
+            return
+        pane = self.panes.get("main")
+        if pane is not None:
+            try:
+                self.mux.send_line(
+                    pane,
+                    f"[MKCREW] LATE RESULT from {agent} ({job_id}): the worker FINISHED after your ask "
+                    f"timed out. Reply: {str(reply)[:200]} -- review/integrate its work; do NOT re-delegate that task.")
+            except Exception:
+                pass
+
     def ask(self, frm: str, to: str, text: str, timeout: float = 1800) -> str:
         job = self.jobs.open(frm=frm, to=to, text=text)
         ev = threading.Event()
@@ -220,7 +242,7 @@ class Mkd:
             ev.set()
         elif self.jobs.get(job.id).status in ("DONE", "INCOMPLETE", "PANICKED"):
             ev.set()
-        did = ev.wait(timeout)
+        did = ev.wait(self._ask_ceiling(timeout))
         if not did:
             # Timeout: mark incomplete so the caller always gets a meaningful reply.
             try:
@@ -288,8 +310,6 @@ class Mkd:
 
         for agent, _pid in list(self.panes.items()):
             inflight = self.jobs.inflight_for(agent)
-            if not inflight:
-                continue
             for art in sorted(config.agent_finish_dir(agent).glob("*.json")):
                 if str(art) in self._seen:
                     continue
@@ -298,8 +318,12 @@ class Mkd:
                     data = json.loads(art.read_text(encoding="utf-8"))
                 except Exception:
                     continue
-                if data.get("job_id") != inflight.id:
-                    continue  # heartbeat / other-job artifact: not a completion for this job
+                if inflight is None or data.get("job_id") != inflight.id:
+                    # heartbeat / other-job artifact — OR a LATE finish for a job the ask already
+                    # timed out (it left the in-flight set, so it can never match here). Surface it;
+                    # late_reply() no-ops for anything that isn't a timed-out job.
+                    self._late_result(data.get("job_id"), agent, data.get("reply", ""))
+                    continue
                 self.jobs.complete(inflight.id, reply=data.get("reply", ""))
                 if inflight.id in self._events:
                     self._events[inflight.id].set()

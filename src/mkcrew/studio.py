@@ -88,7 +88,7 @@ _TEMPLATE_SCREEN = {
 MODES = [
     {"key": "standard",   "name": "Standard",   "desc": "Delegate -> do -> review. The balanced default."},
     {"key": "fast",       "name": "Fast",       "desc": "No gates -- ship directly. Skips the plan/review/verify ceremony."},
-    {"key": "thorough",   "name": "Thorough",   "desc": "Correctness over speed: review gate on every result, claims verified by running them. Patient watchdog for deep work."},
+    {"key": "thorough",   "name": "Thorough",   "desc": "Correctness over speed: review gate on every result, claims verified by running them. Patient watchdog + 90-min ask ceiling for deep work."},
     {"key": "plan-first", "name": "Plan First", "desc": "The lead presents its full task breakdown and waits for your OK before the first delegation."},
 ]
 # A RUNNING cockpit can switch anytime:  mk mode <key>  (persists + updates daemon and lead live).
