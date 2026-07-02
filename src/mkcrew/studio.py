@@ -20,7 +20,7 @@ _PROVIDER_BINARY = {"antigravity": "agy"}   # provider name -> the actual CLI bi
 # load_catalog). opencode covers both 'zen' (opencode/<id>, curated gateway) and 'go' (opencode-go/<id>,
 # subscription) per opencode.ai/docs/{zen,go}. antigravity model names carry the level (no thinking toggle).
 _PROVIDER_MODELS = {
-    "claude":      ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"],
+    "claude":      ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5", "claude-fable-5"],
     "codex":       ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"],
     "opencode":    ["opencode/big-pickle", "opencode/deepseek-v4-flash-free", "opencode/mimo-v2.5-free",
                     "opencode/north-mini-code-free",                       # zen free tier (docs/zen)
@@ -28,7 +28,7 @@ _PROVIDER_MODELS = {
                     "opencode-go/kimi-k2.7-code", "opencode-go/qwen3.7-max"],   # opencode go (docs/go)
     "antigravity": ["Gemini 3.5 Flash (High)", "Gemini 3.5 Flash (Medium)", "Gemini 3.5 Flash (Low)",
                     "Gemini 3.1 Pro (High)", "Gemini 3.1 Pro (Low)", "Claude Sonnet 4.6 (Thinking)",
-                    "Claude Opus 4.6 (Thinking)", "GPT-OSS 120B (Medium)"],
+                    "Claude Opus 4.6 (Thinking)", "GPT-OSS 120B (Medium)"],   # agy's OWN catalog (not the claude provider)
 }
 # Thinking / reasoning levels per provider (a CLI flag at launch): claude `--effort`, codex
 # `-c model_reasoning_effort`, opencode `--variant` (provider-specific reasoning effort). antigravity

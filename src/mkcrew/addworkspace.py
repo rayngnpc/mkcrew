@@ -85,9 +85,11 @@ def _template_preview(key: str) -> str:
 # is per-agent AND model-dependent, never one global value.
 _MODELS = {
     "claude": [
-        ("claude-opus-4-8", "Claude Opus 4.8", ["low", "medium", "high", "max"]),
-        ("claude-sonnet-4-6", "Claude Sonnet 4.6", ["low", "medium", "high"]),
-        # confirm: user mentioned a possible 3rd Claude model (e.g. Haiku) — omitted until confirmed.
+        ("claude-opus-4-8",  "Claude Opus 4.8",  ["low", "medium", "high", "max"]),
+        ("claude-sonnet-5",  "Claude Sonnet 5",  ["low", "medium", "high", "max"]),
+        ("claude-haiku-4-5", "Claude Haiku 4.5", ["low", "medium", "high"]),
+        ("claude-fable-5",   "Claude Fable 5",   ["low", "medium", "high"]),
+        # ponytail: effort ceilings are best-effort per tier ('max' on the strong pair) — trivial to edit.
     ],
     "codex": [
         ("gpt-5.5", "GPT-5.5", ["low", "medium", "high", "xhigh"]),
@@ -262,7 +264,7 @@ class AddWorkspaceApp(App):
     #count { layout: horizontal; }
     #count > RadioButton { width: auto; margin: 0 2 0 0; }
     /* item #1: the per-agent CLI / model / effort lists carry the longest, most-uneven labels (e.g.
-       'Opus 4.6 Thinking', 'Claude Sonnet 4.6'), so they STACK vertically — one option per line — which
+       'Opus 4.8 Thinking', 'Claude Sonnet 5'), so they STACK vertically — one option per line — which
        never collides or clips a model name (a horizontal row can't wrap in Textual). */
     .cli, .model, .effort { layout: vertical; }
     .modelsel { width: 100%; }                  /* OpenCode model picker is a Select (dropdown) */

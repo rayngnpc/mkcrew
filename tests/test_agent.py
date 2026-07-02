@@ -66,7 +66,7 @@ def test_launch_command_returns_cmd_k_file(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     project_dir = tmp_path / "proj"
     project_dir.mkdir()
-    cmd = agent.launch_command("worker", "claude-sonnet-4-6", project_dir)
+    cmd = agent.launch_command("worker", "claude-sonnet-5", project_dir)
     assert cmd[0] == "cmd"
     assert cmd[1] == "/k"
     cmd_file = Path(cmd[2])
@@ -74,7 +74,7 @@ def test_launch_command_returns_cmd_k_file(tmp_path, monkeypatch):
     content = cmd_file.read_text(encoding="utf-8")
     assert "cd /d" in content
     assert 'set "MK_ACTOR=worker"' in content
-    assert "claude --permission-mode bypassPermissions --model claude-sonnet-4-6" in content
+    assert "claude --permission-mode bypassPermissions --model claude-sonnet-5" in content
 
 
 def test_codex_hook_resolves_role_from_per_pane_env_not_baked_overwrite():
@@ -130,7 +130,7 @@ def test_launch_command_without_effort_omits_flag(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     project_dir = tmp_path / "proj"
     project_dir.mkdir()
-    cmd = agent.launch_command("worker", "claude-sonnet-4-6", project_dir, effort=None)
+    cmd = agent.launch_command("worker", "claude-sonnet-5", project_dir, effort=None)
     cmd_file = Path(cmd[2])
     content = cmd_file.read_text(encoding="utf-8")
     assert "--effort" not in content

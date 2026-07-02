@@ -42,7 +42,7 @@ def test_default_team_sonnet_agents():
     team = teamconfig.default_team()
     for role in ("worker2", "worker4", "worker6"):   # the sonnet-model workers
         a = next(x for x in team if x["role"] == role)
-        assert a["model"] == "claude-sonnet-4-6"
+        assert a["model"] == "claude-sonnet-5"
         assert a["effort"] == "high"
         assert a["window"] == role
         assert a["mode"] == "bypassPermissions"
@@ -113,7 +113,7 @@ def test_load_team_does_not_overwrite_existing_config(tmp_path, monkeypatch):
     custom = {
         "entry_window": "custom",
         "agents": [
-            {"role": "solo", "model": "claude-sonnet-4-6", "effort": "low",
+            {"role": "solo", "model": "claude-sonnet-5", "effort": "low",
              "window": "solo", "mode": "bypassPermissions"},
         ],
     }
@@ -300,7 +300,7 @@ def test_build_team_non_claude_blank_model_drops_claude_default():
     leave it blank so team.config reflects reality and the provider CLI picks its own default."""
     agents = teamconfig.build_team(2, ["claude", "opencode"])   # no models given
     assert agents[1]["provider"] == "opencode"
-    assert agents[1]["model"] == ""                             # NOT "claude-sonnet-4-6"
+    assert agents[1]["model"] == ""                             # NOT "claude-sonnet-5"
     assert agents[0]["model"] == teamconfig.default_team()[0]["model"]   # claude agent keeps its default
     # an EXPLICIT (even claude-*) model on a non-claude agent is still honored — only inherited defaults drop
     agents2 = teamconfig.build_team(2, ["claude", "codex"], models=["", "gpt-5-codex"])

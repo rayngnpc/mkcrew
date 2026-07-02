@@ -572,10 +572,10 @@ def test_addworkspace_picker_removes_gemini_and_uses_template_labels():
     assert not any("variant" in label.lower() for _value, label, _efforts in _MODELS["opencode"])
     # Requirement 1: FULL model labels (not bare "Opus"/"Sonnet").
     claude_labels = [label for _v, label, _ef in _MODELS["claude"]]
-    assert "Claude Opus 4.8" in claude_labels and "Claude Sonnet 4.6" in claude_labels
-    # Requirement 2: efforts are per-MODEL and differ (Opus has 'max', Sonnet does not).
+    assert {"Claude Opus 4.8", "Claude Sonnet 5", "Claude Haiku 4.5", "Claude Fable 5"} <= set(claude_labels)
+    # Requirement 2: efforts are per-MODEL and differ (strong tier has 'max', fast tier does not).
     by_id = {v: ef for v, _l, ef in _MODELS["claude"]}
-    assert "max" in by_id["claude-opus-4-8"] and "max" not in by_id["claude-sonnet-4-6"]
+    assert "max" in by_id["claude-opus-4-8"] and "max" not in by_id["claude-haiku-4-5"]
     assert _MODELS["codex"][0][2][-1] == "xhigh"                       # GPT-5.5 tops out at 'xhigh'
 
 

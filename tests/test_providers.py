@@ -65,10 +65,10 @@ def test_launch_command_claude_provider_default(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     project_dir = tmp_path / "proj"
     project_dir.mkdir()
-    cmd = agent.launch_command("worker", "claude-sonnet-4-6", project_dir,
+    cmd = agent.launch_command("worker", "claude-sonnet-5", project_dir,
                                mode="bypassPermissions", effort=None, provider="claude")
     content = Path(cmd[2]).read_text(encoding="utf-8")
-    assert "claude --permission-mode bypassPermissions --model claude-sonnet-4-6" in content
+    assert "claude --permission-mode bypassPermissions --model claude-sonnet-5" in content
     assert "gemini" not in content
     assert "opencode" not in content
 
@@ -90,7 +90,7 @@ def test_launch_command_omits_provider_arg_defaults_to_claude(tmp_path, monkeypa
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     project_dir = tmp_path / "proj"
     project_dir.mkdir()
-    cmd = agent.launch_command("worker", "claude-sonnet-4-6", project_dir)
+    cmd = agent.launch_command("worker", "claude-sonnet-5", project_dir)
     content = Path(cmd[2]).read_text(encoding="utf-8")
     assert "claude --permission-mode bypassPermissions" in content
 
