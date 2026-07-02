@@ -352,3 +352,19 @@ def test_load_name_handles_corrupt_workspace_json(tmp_path):
     p.parent.mkdir(parents=True)
     p.write_text("{not json", encoding="utf-8")
     assert teamconfig.load_name(tmp_path) is None
+
+
+def test_set_mode_persists_and_preserves_config(tmp_path):
+    """set_mode writes mode into team.config without disturbing layout/agents; load_mode round-trips;
+    a missing config gets a default one (mirrors set_layout)."""
+    from mkcrew import teamconfig
+    project = tmp_path / "proj"
+    project.mkdir()
+    teamconfig.write_team(project, [{"role": "main", "provider": "claude", "model": ""}], "main-vertical")
+    teamconfig.set_mode(project, "thorough")
+    assert teamconfig.load_mode(project) == "thorough"
+    assert teamconfig.load_layout(project) == "main-vertical"          # untouched
+    assert teamconfig.load_team(project)[0]["role"] == "main"          # untouched
+    fresh = tmp_path / "fresh"; fresh.mkdir()
+    teamconfig.set_mode(fresh, "plan-first")                           # no config yet -> default created
+    assert teamconfig.load_mode(fresh) == "plan-first"

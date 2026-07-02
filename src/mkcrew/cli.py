@@ -336,6 +336,11 @@ def cmd_start(argv):
     team = teamconfig.load_team(project)
     layout_name = teamconfig.load_layout(project)
     mode = teamconfig.load_mode(project)
+    if mode != "standard":
+        try:
+            _post("/mode", {"mode": mode})    # daemon watchdog patience follows the posture from boot
+        except (SystemExit, Exception):
+            pass                              # best-effort: the lead bootstrap carries the clause anyway
     # FIX #4: workspace name = identity. `mk start --name X` sets+persists it; otherwise use the
     # persisted name (None -> the lead gets the generic 'a MKCREW team' wording).
     name = _arg_value(argv, "--name")
@@ -676,6 +681,30 @@ def cmd_layout(argv):
           f"(rebuilds, sessions resume), or it takes effect on next `mk start`")
 
 
+def cmd_mode(argv):
+    """`mk mode [<mode>]`: show or switch the crew's working posture (standard / fast / thorough /
+    plan-first). Persists to team.config; a RUNNING cockpit switches LIVE — the daemon's watchdog
+    patience follows immediately and the lead gets a one-line posture update in its pane."""
+    from . import prompts
+    valid = ["standard"] + sorted(prompts._MODE_CLAUSE)
+    project = _project_dir()
+    if not argv:
+        print(f"core mode: {teamconfig.load_mode(project)}   (available: {', '.join(valid)})")
+        return
+    m = argv[0]
+    if m not in valid:
+        sys.exit(f"error: unknown mode '{m}' — pick one of: {', '.join(valid)}")
+    teamconfig.set_mode(project, m)
+    note = "applies on next `mk start`"
+    if config.port_file().exists():
+        try:
+            _post("/mode", {"mode": m})
+            note = "live: daemon updated, lead notified"
+        except (SystemExit, Exception):
+            pass                                  # daemon gone/stale port: persisted for next start
+    print(f"core mode -> {m}   ({note})")
+
+
 def cmd_relayout(argv):
     """Switch to ANY layout (incl. structural hub/pages/dashboard) by rebuilding the cockpit. psmux
     can't relocate live panes, so a structural change needs a rebuild — but your CLI sessions RESUME
@@ -998,7 +1027,8 @@ COMMANDS = {"init": cmd_init, "start": cmd_start, "attach": cmd_attach,
             "open": cmd_open, "workspaces": cmd_workspaces, "doctor": cmd_doctor,
             "pend": cmd_pend, "trace": cmd_trace, "repair": cmd_repair,
             "verify": cmd_verify, "resume": cmd_resume, "tui": cmd_tui,
-            "layout": cmd_layout, "relayout": cmd_relayout, "studio": cmd_studio}
+            "layout": cmd_layout, "relayout": cmd_relayout, "studio": cmd_studio,
+            "mode": cmd_mode}
 
 def main(argv=None) -> int:
     argv = argv if argv is not None else sys.argv[1:]

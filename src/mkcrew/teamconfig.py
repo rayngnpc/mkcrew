@@ -209,3 +209,17 @@ def set_layout(project_dir, layout: str) -> Path:
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return cfg
+
+
+def set_mode(project_dir, mode: str) -> Path:
+    """Persist the core-mode posture into team.config, preserving everything else (mirrors
+    set_layout). Creates a default config first if none exists. Returns the config path."""
+    cfg = _config_path(project_dir)
+    if cfg.exists():
+        data = json.loads(cfg.read_text(encoding="utf-8"))
+    else:
+        data = {"entry_window": "main", "agents": default_team()}
+    data["mode"] = mode
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return cfg

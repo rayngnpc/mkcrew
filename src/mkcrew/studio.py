@@ -86,9 +86,12 @@ _TEMPLATE_SCREEN = {
 # 'fast' drops the gates. Genius/Loop were removed -- they only re-labelled what the lead already
 # does from the task (task-router escalates risky work; "keep developing" triggers the dev loop).
 MODES = [
-    {"key": "standard", "name": "Standard", "desc": "Delegate -> do -> review. The balanced default."},
-    {"key": "fast",     "name": "Fast",     "desc": "No gates -- ship directly. Skips the plan/review/verify ceremony."},
+    {"key": "standard",   "name": "Standard",   "desc": "Delegate -> do -> review. The balanced default."},
+    {"key": "fast",       "name": "Fast",       "desc": "No gates -- ship directly. Skips the plan/review/verify ceremony."},
+    {"key": "thorough",   "name": "Thorough",   "desc": "Correctness over speed: review gate on every result, claims verified by running them. Patient watchdog for deep work."},
+    {"key": "plan-first", "name": "Plan First", "desc": "The lead presents its full task breakdown and waits for your OK before the first delegation."},
 ]
+# A RUNNING cockpit can switch anytime:  mk mode <key>  (persists + updates daemon and lead live).
 
 
 def detect_clis() -> dict:

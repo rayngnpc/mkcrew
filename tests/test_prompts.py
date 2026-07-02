@@ -208,3 +208,26 @@ def test_team_update_prompt_names_the_changes_and_current_roster():
     assert "main (" not in p                        # lead is not a teammate
     assert "\n" not in p                            # single line for send_line()
     assert "C:/x/mk.exe ask" in p
+
+
+def test_thorough_and_plan_first_mode_clauses():
+    """The two new postures inject their clauses; 'standard' output is BYTE-IDENTICAL to a prompt
+    with no mode at all (regression guard: adding modes must not change existing cockpits)."""
+    from mkcrew import prompts
+    base = prompts.lead_prompt("C:/x/mk.exe")
+    assert prompts.lead_prompt("C:/x/mk.exe", mode="standard") == base    # untouched default
+    thorough = prompts.lead_prompt("C:/x/mk.exe", mode="thorough")
+    assert "THOROUGH MODE" in thorough and "review gate" in thorough
+    plan = prompts.lead_prompt("C:/x/mk.exe", mode="plan-first")
+    assert "PLAN-FIRST MODE" in plan and "WAIT" in plan
+    assert "THOROUGH MODE" not in base and "PLAN-FIRST MODE" not in base
+
+
+def test_mode_update_prompt_live_switch_line():
+    """`mk mode <m>` sends a single-line posture update: names the mode, carries its clause; an
+    unknown/standard mode falls back to the balanced-default wording. Single-line (send_line)."""
+    from mkcrew import prompts
+    up = prompts.mode_update_prompt("thorough")
+    assert "\n" not in up and "'thorough'" in up and "THOROUGH MODE" in up
+    back = prompts.mode_update_prompt("standard")
+    assert "balanced default" in back

@@ -1310,3 +1310,20 @@ def test_cmd_add_mixed_team_message_names_real_providers(monkeypatch, tmp_path, 
     assert "added workspace" in out
     assert "claude" in out and "codex" in out          # both real providers named
     assert "2 claude" not in out                        # not the bogus singular-default miscount
+
+
+def test_cmd_mode_shows_sets_and_validates(tmp_path, monkeypatch, capsys):
+    """`mk mode` shows current + options; `mk mode thorough` persists (daemon down -> next-start
+    note, no crash); an unknown mode exits with the valid list."""
+    import pytest
+    from mkcrew import teamconfig
+    monkeypatch.setattr(cli, "_project_dir", lambda: tmp_path)
+    monkeypatch.setattr("mkcrew.config.port_file", lambda: tmp_path / "no-such-port")
+    cli.cmd_mode([])
+    out = capsys.readouterr().out
+    assert "standard" in out and "thorough" in out and "plan-first" in out
+    cli.cmd_mode(["thorough"])
+    assert teamconfig.load_mode(tmp_path) == "thorough"
+    assert "next" in capsys.readouterr().out                # daemon not running -> next-start note
+    with pytest.raises(SystemExit):
+        cli.cmd_mode(["warp9"])

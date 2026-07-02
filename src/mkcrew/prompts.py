@@ -23,7 +23,23 @@ def _role_function(role: str) -> str:
 _MODE_CLAUSE = {
     "fast": "FAST MODE: skip the planner and the review/verify gates -- delegate the work, accept "
             "it, and ship directly without the plan->review->verify ceremony. ",
+    "thorough": "THOROUGH MODE: correctness over speed. Every worker result must pass the review "
+                "gate before you accept it, and verify claims by RUNNING the result (build/tests/"
+                "the app) -- never accept a completion summary on faith. Workers may take long "
+                "turns; that is expected here. ",
+    "plan-first": "PLAN-FIRST MODE: before your FIRST delegation, present the full task breakdown "
+                  "(which teammate does what, in what order, which files each task owns) and WAIT "
+                  "for the user's explicit OK. After approval, proceed without re-asking per task. ",
 }
+
+
+def mode_update_prompt(mode: str) -> str:
+    """Sent to a RUNNING lead when the user switches core mode (`mk mode <m>`), so the posture
+    changes live without a cockpit restart. Single-line (delivered via send_line)."""
+    clause = _MODE_CLAUSE.get(
+        mode, "Return to the balanced default: delegate -> do -> review/verify as the task warrants. ")
+    return (f"Core-mode update: the user switched your working posture to '{mode}'. {clause}"
+            "Acknowledge in one short line and apply it from your next action onward.")
 
 
 def lead_prompt(mk: str, team=None, mode: str = "standard", provider: str = "claude",

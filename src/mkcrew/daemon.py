@@ -36,13 +36,16 @@ ZOMBIE_TICKS = 3              # consecutive blank-capture ticks before zombie gi
 
 
 class Mkd:
-    def __init__(self, mux=None, poll_interval=0.2, eventlog=None):
+    def __init__(self, mux=None, poll_interval=0.2, eventlog=None, mode="standard"):
         self.mux = mux or PsmuxBackend()
         self._eventlog = eventlog if eventlog is not None else EventLog(":memory:")
         self.jobs = JobStore(eventlog=self._eventlog)
         self.panes: dict[str, str] = {}
         self.providers: dict[str, str] = {}   # role -> provider (set at /register); delivery is provider-aware
         self.poll_interval = poll_interval
+        # Core-mode posture (standard/fast/thorough/plan-first). 'thorough' widens watchdog patience
+        # (deep work legitimately takes long, quiet turns); everything else keeps the defaults.
+        self.mode = mode
         self._events: dict[str, threading.Event] = {}
         self._stop = threading.Event()
         self._seen: set[str] = set()
@@ -418,14 +421,16 @@ class Mkd:
             # lead's ask() unblocks early.  A still-progressing worker keeps re-arming progress_ts
             # above and is never cut off.
             if injected:
-                if self._now() - wd.get("progress_ts", self._now()) > POST_PICKUP_STALL_SECONDS:
+                # thorough mode = patient watchdog: deep tasks stay quiet 3x longer before giveup
+                stall = POST_PICKUP_STALL_SECONDS * (3 if self.mode == "thorough" else 1)
+                if self._now() - wd.get("progress_ts", self._now()) > stall:
                     self._giveup(inflight, "[stall_giveup] worker picked up the task but stopped making progress")
                 continue
 
             # Not yet picked up: the content-free wake may not have landed (an idle TUI ignores a
             # bare Enter) — re-wake on an interval, then give up if it's never picked up.
             if self._now() - wd["delivered_ts"] > WAKE_RETRY_SECONDS:
-                if wd["wakes"] < MAX_RETRY:
+                if wd["wakes"] < (MAX_RETRY * 2 if self.mode == "thorough" else MAX_RETRY):
                     self._wake(agent)
                     self.jobs.record_event(inflight.id, "rewake")
                     wd["wakes"] += 1
@@ -486,6 +491,7 @@ def _make_handler(mkd: Mkd):
                     "pause_reason": mkd._pause_reason,
                     "agents": sorted(mkd.panes.keys()),
                     "jobs": len(mkd.jobs.list_jobs()),
+                    "mode": mkd.mode,
                 })
             elif self.path.startswith("/jobs/"):
                 job_id = self.path[len("/jobs/"):]
@@ -521,6 +527,21 @@ def _make_handler(mkd: Mkd):
             if self.path == "/panic":
                 mkd.panic_now("cli")
                 self._json(200, {"ok": True})
+                return
+            if self.path == "/mode":
+                m = body.get("mode")
+                if not m or not isinstance(m, str):
+                    self._json(400, {"error": "missing field"})
+                    return
+                mkd.mode = m                                   # live watchdog patience switch
+                pane = mkd.panes.get("main")                   # tell the RUNNING lead its new posture
+                if pane is not None:
+                    from . import prompts
+                    try:
+                        mkd.mux.send_line(pane, prompts.mode_update_prompt(m))
+                    except Exception:
+                        pass                                   # posture persisted; notify is best-effort
+                self._json(200, {"ok": True, "mode": m})
                 return
             if self.path == "/register":
                 agent = body.get("agent")

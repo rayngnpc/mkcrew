@@ -1003,3 +1003,53 @@ def test_daemon_accepts_injected_eventlog(tmp_path):
     log = EventLog(tmp_path / "e.db")
     d = Mkd(eventlog=log)      # injectable for tests
     assert d.jobs._log is log
+
+
+# --- core mode: live switch via POST /mode + thorough watchdog patience ---
+
+def test_http_mode_switch_updates_daemon_and_notifies_lead(tmp_path, monkeypatch):
+    """POST /mode sets the daemon's posture live, tells the RUNNING lead its new posture (one line
+    into the main pane), and /status exposes it (tower/tools can read it)."""
+    import threading, urllib.request, json as _json
+    from http.server import ThreadingHTTPServer
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    mux = FakeMux()
+    mkd = Mkd(mux=mux)
+    mkd.register_agent("main", pane_id="%1")
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(mkd))
+    port = httpd.server_address[1]
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/mode", data=b'{"mode": "thorough"}',
+                                     headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=5) as r:
+            assert _json.loads(r.read())["mode"] == "thorough"
+        assert mkd.mode == "thorough"
+        assert any(pid == "%1" and "thorough" in line for pid, line in mux.lines)   # lead notified
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/status", timeout=5) as r:
+            assert _json.loads(r.read())["mode"] == "thorough"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()   # release the listening socket NOW (a lingering one can flake later tests)
+
+
+def test_thorough_mode_widens_stall_patience(tmp_path, monkeypatch):
+    """A picked-up job whose heartbeat freezes past POST_PICKUP_STALL_SECONDS is given up in
+    standard mode but NOT in thorough (3x patience: deep work legitimately goes quiet for long)."""
+    from mkcrew import daemon as dmod
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    results = {}
+    for mode in ("standard", "thorough"):
+        clock = [1000.0]
+        mux = FakeMux(); mux.capture = lambda pid: "frozen frame"    # heartbeat never changes
+        d = Mkd(mux=mux, mode=mode); d._now = lambda: clock[0]
+        d.register_agent("worker", pane_id="%9")
+        job = d.jobs.open(frm="main", to="worker", text="deep task")
+        d._deliver(job)
+        d.jobs.record_event(job.id, "injected")                      # worker picked it up
+        d._poll_once()                                               # arm the progress heartbeat
+        clock[0] += dmod.POST_PICKUP_STALL_SECONDS + 60              # past 1x patience, under 3x
+        d._poll_once()
+        results[mode] = d.jobs.get(job.id).status
+    assert results["standard"] in ("INCOMPLETE",), results           # standard gave up
+    assert results["thorough"] == "DELIVERED", results               # thorough is still patient

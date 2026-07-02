@@ -207,3 +207,14 @@ def test_render_core_blocked_asker_shows_waiting_not_idle():
     assert "waiting→" not in out2                        # terminal job -> back to idle
     outh = coreview.render_core(agents, inflight, roster=roster, orient="h")
     assert "waiting→worker2" in outh                     # side-by-side strip too
+
+
+def test_render_core_mode_badge_only_when_not_standard():
+    """Non-standard modes show a 'mode <m>' badge in the header; standard renders BYTE-IDENTICAL to
+    a mode-less call (regression guard: existing cockpits must not change appearance)."""
+    import re
+    strip = lambda s: re.sub(r"\x1b\[[0-9;]*m", "", s)
+    assert coreview.render_core({}, [], mode="standard") == coreview.render_core({}, [])
+    assert "mode thorough" in strip(coreview.render_core({}, [], mode="thorough"))
+    assert "mode thorough" not in strip(coreview.render_core({}, []))
+    assert "mode plan-first" in strip(coreview.render_core({}, [], mode="plan-first", orient="h"))

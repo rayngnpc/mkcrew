@@ -394,7 +394,8 @@ def _compact_core(agents, jobs, recent, roster, width=30):
     return _box(rows, width)
 
 
-def render_core(agents, jobs, recent=5, roster=None, orient="v", compact=False, width=30):
+def render_core(agents, jobs, recent=5, roster=None, orient="v", compact=False, width=30,
+                mode="standard"):
     """Pure: (agents state, jobs[, roster]) -> the styled core-frame text (ANSI + box-drawing).
 
     Two sections, TEAM (who is doing what) and JOBS (newest `recent`, newest-first, with a
@@ -407,6 +408,8 @@ def render_core(agents, jobs, recent=5, roster=None, orient="v", compact=False, 
     team, jobsb = _team_block(agents, roster, jobs), _jobs_block(jobs, recent)
     rail = _status_rail(agents, jobs, roster)
     headline = f"{_CYAN}{_B}MKCREW core{_R}   {rail}"
+    if mode and mode != "standard":                          # badge ONLY when non-default: standard
+        headline += f"  {_DIM}mode {_AMBER}{mode}{_R}"       # cockpits render byte-identical to before
     if orient == "h":
         # TEAM | TASKS side by side, with a gutter, the shorter table padded, all wrapped in the SAME
         # box frame as the vertical view (the strip used to have no frame and ragged, colliding columns).
@@ -422,10 +425,10 @@ def render_core(agents, jobs, recent=5, roster=None, orient="v", compact=False, 
     return _box(rows, width)
 
 
-def frame_from_events(events, roster=None, orient="v"):
+def frame_from_events(events, roster=None, orient="v", mode="standard"):
     """Pure: a list of Event -> the rendered core frame (team + recent-jobs tables)."""
     return render_core(projections.agents(events), list(projections.jobs(events).values()),
-                       roster=roster, orient=orient)
+                       roster=roster, orient=orient, mode=mode)
 
 
 def _read_roster(project=None):
@@ -482,7 +485,14 @@ def coreview_run(iterations=None, interval=2.0, clear=_clear_screen, roster=None
         while iterations is None or n < iterations:
             clear()
             w = width or shutil.get_terminal_size((80, 24)).columns
-            frame = frame_from_events(log.replay(), roster=roster, orient=orient)
+            # per-tick mode read: `mk mode` persists to team.config, so the badge follows a live
+            # switch on the next refresh (tiny json read; no daemon round-trip needed).
+            try:
+                from . import teamconfig
+                mode = teamconfig.load_mode(project) if project else "standard"
+            except Exception:
+                mode = "standard"
+            frame = frame_from_events(log.replay(), roster=roster, orient=orient, mode=mode)
             print(_center(frame, w) + _RESET, flush=True)
             n += 1
             if iterations is not None and n >= iterations:
