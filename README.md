@@ -57,6 +57,9 @@ The installer is an arrow-key menu with three modes — **INSTALL** (confirms ea
 (read-only report, changes nothing), **AUTO** (unattended). Then log into at least one agent CLI
 (e.g. `npm i -g @anthropic-ai/claude-code`, then run `claude` once) and you're done.
 
+**Or zero-install:** grab **[MKCREW.exe](https://github.com/rayngnpc/mkcrew/releases/latest)** — a single
+standalone app (psmux bundled inside; no Python/uv needed). Just add an agent CLI + login.
+
 <details>
 <summary><b>Other ways to install</b> (clone for development · manual)</summary>
 

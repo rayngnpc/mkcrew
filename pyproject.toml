@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mkcrew"
-version = "0.0.1"
+version = "0.1.0"
 description = "MKCREW — native-Windows event-sourced multi-agent CLI orchestrator on psmux"
 requires-python = ">=3.12"
 dependencies = ["textual>=0.80"]
