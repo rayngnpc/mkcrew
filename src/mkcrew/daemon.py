@@ -1,7 +1,7 @@
 # src/mkcrew/daemon.py
 import json, os, signal, time, threading, sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from . import config
+from . import config, projections
 from .jobs import JobStore
 from .eventlog import EventLog
 from .panic import PanicController
@@ -40,6 +40,7 @@ class Mkd:
         self.mux = mux or PsmuxBackend()
         self._eventlog = eventlog if eventlog is not None else EventLog(":memory:")
         self.jobs = JobStore(eventlog=self._eventlog)
+        self._rehydrate()   # restart-proofing: reload any job still in flight when the last daemon died
         self.panes: dict[str, str] = {}
         self.providers: dict[str, str] = {}   # role -> provider (set at /register); delivery is provider-aware
         self.poll_interval = poll_interval
@@ -51,10 +52,18 @@ class Mkd:
         self._seen: set[str] = set()
         self._now = time.monotonic          # injectable clock for tests
         # Watchdog state: job_id -> {"hash": ..., "progress_ts": ..., "retries": ...}
-        # In-flight jobs are NOT persisted across restarts — daemon always starts clean
-        # (drained by construction; SQLite persistence is deferred to a future phase).
+        # Deliberately NOT rehydrated across restarts (unlike jobs -- see _rehydrate()): a
+        # rehydrated job is reinserted straight into INCOMPLETE, so there is no live delivery
+        # left to watch and no asker left to re-wake. Watchdog state always starts clean.
         self._wd: dict[str, dict] = {}
         self._last_wd: float = 0.0
+        # Pane-activity feed for the control tower: role -> {"hash": <last capture's hash>,
+        # "changed_ts": <self._now() when that hash last changed>}.  Tracked for EVERY registered
+        # agent, not just in-flight ones -- a worker that keeps streaming output past its job's
+        # watchdog give-up (INCOMPLETE) must still read as "alive" over /status.  (The incident this
+        # exists for: a worker worked 49 min, the ask() ceiling gave up at 30, and the tower showed
+        # INCOMPLETE/idle while the pane was visibly live.)
+        self._activity: dict[str, dict] = {}
         # Panic controller — layer 1 / 2 / 3 kill switch
         self.panic = PanicController()
         # Pause state (distinct from panic — soft stop, resumable)
@@ -64,6 +73,27 @@ class Mkd:
         self._jobs_completed: int = 0
         self._team_start: float | None = None   # set on first _deliver()
         self._consecutive_failures: int = 0
+
+    def _rehydrate(self) -> None:
+        """Startup replay of the persistent event log (restart-proofing). A job whose latest
+        folded state is still PENDING/DELIVERED never reached job.done in a PREVIOUS daemon
+        process -- that process (and the blocking mk ask() waiting on it) is gone, so
+        INCOMPLETE is the truthful status now. Reinsert it under its ORIGINAL job_id so the
+        worker's eventual mk-done is handled by the EXISTING late_reply()/_late_result() path
+        (a LATE RESULT line to the lead) instead of an artifact nobody is tracking silently
+        dropping the result. Terminal jobs are skipped -- projections.jobs() already folds a
+        job.done event into DONE/INCOMPLETE/PANICKED, all terminal. An empty or fresh
+        (:memory:) log folds to {}, so this is a no-op by construction; _wd/_events are never
+        touched here (rehydrated jobs are already terminal-ish -- no asker is waiting).
+        Terminal ids are remembered too (NOT reloaded as jobs): finish artifacts are files a
+        prior session may not have deleted yet, so without this set every restart would
+        ORPHANED-RESULT-spam the lead once per leftover artifact of a long-done job."""
+        self._replayed_terminal: set[str] = set()
+        for view in projections.jobs(self._eventlog.replay()).values():
+            if view.status in ("PENDING", "DELIVERED"):
+                self.jobs.rehydrate_incomplete(view.id, view.frm, view.to, view.text)
+            else:
+                self._replayed_terminal.add(view.id)
 
     def register_agent(self, agent: str, pane_id: str, provider: str = "claude") -> None:
         self.panes[agent] = pane_id
@@ -217,18 +247,45 @@ class Mkd:
         return timeout * (3 if self.mode in ("thorough", "architect") else 1)
 
     def _late_result(self, job_id, agent, reply) -> None:
-        """A finish artifact for an already-timed-out job: the WORK is real (it's on disk) — surface
-        it to the lead instead of dropping it, so a longer-than-ceiling task ends as a visible late
-        success ('integrate, don't re-delegate') instead of a silent loss."""
-        if not job_id or not self.jobs.late_reply(job_id, reply):
+        """A finish artifact for a job that is not the current in-flight job: the WORK is real
+        (it's on disk) -- surface it instead of dropping it.
+          - Known job, still INCOMPLETE (timed out, or rehydrated after a restart -- see
+            _rehydrate()): late_reply() records the real reply; tell the lead LATE RESULT.
+          - job_id matches NO job at all (replay couldn't know it -- a corrupt/missing event
+            db, or a cross-version daemon): ORPHANED RESULT, same don't-re-delegate framing,
+            so a genuinely untracked result is never silently lost either.
+        A job that EXISTS but isn't eligible (DONE/PANICKED, or already late-replied once) is
+        untouched -- late_reply()'s own guards keep that silent exactly like today, so
+        heartbeats/stale artifacts never re-notify."""
+        if not job_id:
             return
+        if self.jobs.late_reply(job_id, reply):
+            pane = self.panes.get("main")
+            if pane is not None:
+                try:
+                    self.mux.send_line(
+                        pane,
+                        f"[MKCREW] LATE RESULT from {agent} ({job_id}): the worker FINISHED after your ask "
+                        f"timed out. Reply: {str(reply)[:200]} -- review/integrate its work; do NOT re-delegate that task.")
+                except Exception:
+                    pass
+            return
+        try:
+            self.jobs.get(job_id)
+            return  # exists but not INCOMPLETE (or already late) -- today's silent no-op
+        except KeyError:
+            pass  # truly unknown to this daemon -- fall through to the orphan notice
+        if job_id in self._replayed_terminal:
+            return  # leftover artifact of a job that COMPLETED in a previous session (terminal in
+                    # the replayed log) -- not a lost result, just an undeleted file; stay silent.
         pane = self.panes.get("main")
         if pane is not None:
             try:
                 self.mux.send_line(
                     pane,
-                    f"[MKCREW] LATE RESULT from {agent} ({job_id}): the worker FINISHED after your ask "
-                    f"timed out. Reply: {str(reply)[:200]} -- review/integrate its work; do NOT re-delegate that task.")
+                    f"[MKCREW] ORPHANED RESULT from {agent} ({job_id}): a worker finished a task this "
+                    f"daemon no longer tracks (likely a restart). Reply: {str(reply)[:200]} -- "
+                    f"review/integrate its work; do NOT re-delegate.")
             except Exception:
                 pass
 
@@ -334,6 +391,7 @@ class Mkd:
                     # timed out (it left the in-flight set, so it can never match here). Surface it;
                     # late_reply() no-ops for anything that isn't a timed-out job.
                     self._late_result(data.get("job_id"), agent, data.get("reply", ""))
+                    self._consume_artifact(art)
                     continue
                 self.jobs.complete(inflight.id, reply=data.get("reply", ""))
                 if inflight.id in self._events:
@@ -341,6 +399,7 @@ class Mkd:
                 self._wd.pop(inflight.id, None)
                 self._on_job_completed(inflight.id, status="DONE")
                 inflight_by_id.pop(inflight.id, None)
+                self._consume_artifact(art)
                 break
 
         # Fallback: completion artifacts whose actor is "unknown" (worker did not set MK_ACTOR
@@ -366,11 +425,46 @@ class Mkd:
                 self._wd.pop(job_id, None)
                 self._on_job_completed(job_id, status="DONE")
                 inflight_by_id.pop(job_id, None)
+                self._consume_artifact(art)
 
         # Watchdog tick — fire on interval
         if self._now() - self._last_wd >= WATCHDOG_INTERVAL_SECONDS:
             self._watchdog_tick()
             self._last_wd = self._now()
+
+    @staticmethod
+    def _consume_artifact(art) -> None:
+        """Delete a PROCESSED finish artifact (completed / late / orphan-notified / stale-dup).
+        The event log is the durable ledger; finish files are a hand-off queue, and a drained
+        entry has no reader left -- leaving them (the old behavior) meant the in-memory _seen
+        dedup died with the process and every restart re-walked the leftovers. Parse-FAILED
+        artifacts are never passed here: a partially-written file must survive for a later
+        tick. Deletion failures are ignored -- _seen still dedups within this session."""
+        try:
+            art.unlink()
+        except OSError:
+            pass
+
+    def _safe_capture(self, pane_id: str):
+        """One mux.capture() call for `pane_id`, or None on any failure (dead pane / mux error) --
+        so a bad pane can never raise out of _poll_once and take down the poll thread.  Shared by
+        the zombie/progress checks and the pane-activity feed below; never call mux.capture() twice
+        for the same pane in one tick -- it would desync ScriptedCaptureMux (tests/test_daemon.py),
+        which advances its cursor per call."""
+        try:
+            return (self.mux.capture(pane_id) or "").strip()
+        except Exception:
+            return None
+
+    def _record_activity(self, role: str, sig: str) -> None:
+        """Update the tower's pane-activity feed for `role`: a CHANGED capture re-arms changed_ts
+        (the /status 'seconds since last change' clock); an unchanged capture leaves it alone so
+        idle time keeps accruing.  Only called with a successful capture -- a capture failure is a
+        true no-op (self._activity untouched), matching the 'treat as no-change' contract."""
+        h = hash(sig)
+        prev = self._activity.get(role)
+        if prev is None or prev["hash"] != h:
+            self._activity[role] = {"hash": h, "changed_ts": self._now()}
 
     def _watchdog_tick(self) -> None:
         """Check each in-flight job for progress; redeliver or give up if stale.
@@ -411,6 +505,7 @@ class Mkd:
                     pass  # race: already completed
 
         # --- 2. Per-job pickup / progress / zombie checks (keyed off the 'injected' job event) ---
+        captured: set[str] = set()   # agents already captured this tick -- step 3 below must not repeat them
         for agent, pane_id in list(self.panes.items()):
             inflight = self.jobs.inflight_for(agent)
             if not inflight:
@@ -419,10 +514,16 @@ class Mkd:
             if wd is None:
                 continue
 
-            # ONE capture per tick, reused for both the zombie check and the post-pickup progress
-            # signal (a changing pane == the worker is actively working).  Capturing more than once
-            # here would desync ScriptedCaptureMux, which advances its cursor per call.
-            sig = (self.mux.capture(pane_id) or "").strip()
+            # ONE capture per tick, reused for the zombie check, the post-pickup progress signal
+            # (a changing pane == the worker is actively working), AND the tower's pane-activity
+            # feed.  Capturing more than once here would desync ScriptedCaptureMux, which advances
+            # its cursor per call.  A capture failure (None) is treated as blank/no-progress here,
+            # exactly as before -- but it does NOT touch the activity feed (see _record_activity).
+            raw = self._safe_capture(pane_id)
+            sig = raw if raw is not None else ""
+            captured.add(agent)
+            if raw is not None:
+                self._record_activity(agent, raw)
 
             # Zombie: a totally blank pane for ZOMBIE_TICKS consecutive ticks = the CLI died.
             # Codex's TUI can briefly capture blank while still alive; don't fail it before the
@@ -473,6 +574,17 @@ class Mkd:
                 else:
                     self._giveup(inflight, "[delivery_giveup] worker never picked up the task")
 
+        # --- 3. Pane-activity feed for registered agents NOT captured in step 2 (idle, or their
+        # in-flight job just ended) -- e.g. a worker whose job went INCOMPLETE (its _wd entry is
+        # gone) but is STILL visibly working; the tower needs that signal precisely once the job
+        # store stops tracking it.  Same one-capture-per-pane-per-tick rule as step 2.
+        for agent, pane_id in list(self.panes.items()):
+            if agent in captured:
+                continue
+            raw = self._safe_capture(pane_id)
+            if raw is not None:
+                self._record_activity(agent, raw)
+
     def start_poller(self) -> None:
         def loop():
             while not self._stop.is_set():
@@ -500,6 +612,16 @@ class Mkd:
         self._stop.set()
 
 
+def _job_created_ts(job):
+    """The job's creation epoch time, read off its own event list (job.events[0] is always the
+    'created' event appended by JobStore.open()) -- avoids touching jobs.py just to expose it over
+    HTTP.  Returns None if a 'created' event is somehow missing (defensive; should not happen)."""
+    for e in job.events:
+        if e.get("label") == "created":
+            return e.get("ts")
+    return None
+
+
 def _make_handler(mkd: Mkd):
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a): pass
@@ -515,11 +637,13 @@ def _make_handler(mkd: Mkd):
                         "to": j.to,
                         "status": j.status,
                         "retry_count": mkd._wd.get(j.id, {}).get("retries", 0),
+                        "created_ts": _job_created_ts(j),
                     }
                     for j in jobs
                 ]
                 self._json(200, {"jobs": result})
             elif self.path == "/status":
+                now = mkd._now()
                 self._json(200, {
                     "panicked": mkd.panic.is_panicked,
                     "paused": mkd._paused,
@@ -527,6 +651,14 @@ def _make_handler(mkd: Mkd):
                     "agents": sorted(mkd.panes.keys()),
                     "jobs": len(mkd.jobs.list_jobs()),
                     "mode": mkd.mode,
+                    # role -> seconds since its pane last changed (1dp), or None if never captured.
+                    # Additive/optional: older daemons simply lack this key -- the tower (coreview.py)
+                    # falls back to rendering exactly as before when it's absent.
+                    "activity": {
+                        role: (round(now - mkd._activity[role]["changed_ts"], 1)
+                               if role in mkd._activity else None)
+                        for role in mkd.panes
+                    },
                 })
             elif self.path.startswith("/jobs/"):
                 job_id = self.path[len("/jobs/"):]
@@ -543,6 +675,7 @@ def _make_handler(mkd: Mkd):
                     "reply": j.reply,
                     "retry_count": mkd._wd.get(j.id, {}).get("retries", 0),
                     "events": j.events,
+                    "created_ts": _job_created_ts(j),
                 })
             elif self.path.startswith("/next"):
                 # A worker's Stop hook pulls its queued job here, then injects it into

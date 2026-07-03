@@ -56,6 +56,61 @@ def _waiting_on(role, jobs):
     return None
 
 
+# Pane activity newer than this reads as "still visibly working" -- matches the incident this
+# feature exists for: a worker streaming output well past the ask() ceiling must not look idle.
+_ACTIVITY_FRESH_SECONDS = 90.0
+
+
+def _latest_job_for(role, jobs):
+    """The most recent job addressed TO `role` (list order is oldest-first, so scan backwards), or
+    None.  Mirrors `_waiting_on`'s scan but keyed on `to` instead of `frm` -- used to read a role's
+    OWN latest task (in-flight, or its terminal outcome) for the tower's activity states."""
+    for j in reversed(list(jobs or [])):
+        if getattr(j, "to", None) == role:
+            return j
+    return None
+
+
+def _fmt_age(seconds):
+    """Compact job-age string for a STATE cell: minutes under an hour ('12m', '49m'), 'HhMM' past
+    an hour ('1h05').  Never negative (a clock skew / unknown start reads as '0m')."""
+    total_min = int(max(0.0, seconds or 0.0) // 60)
+    if total_min < 60:
+        return f"{total_min}m"
+    h, m = divmod(total_min, 60)
+    return f"{h}h{m:02d}"
+
+
+def _cap_state(s, n=16):
+    """Hard cap for a STATE cell string at the column's width budget (`_team_block` caps STATE at
+    16 -- see its `columns` list).  The table would truncate an overlong cell anyway; this keeps the
+    raw string itself inside budget so the contract is explicit, not incidental."""
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
+def _activity_state(role, state, jobs, activity, now):
+    """'working <age>' / 'late-work <age>' when the daemon's /status carried FRESH pane 'activity'
+    for `role` -- None on an older daemon (no 'activity' key -> caller falls back to today's state,
+    byte-identical) or when the signal is stale/missing.  'working': role's latest job is still
+    in-flight ('state' == 'running' from projections.agents).  'late-work': the ask() ceiling
+    already gave up on that job (INCOMPLETE) but the pane is STILL visibly producing output --
+    exactly the truth the tower hid during the incident (INCOMPLETE read as dead, not late)."""
+    if not activity:
+        return None
+    secs = activity.get(role)
+    if secs is None or secs >= _ACTIVITY_FRESH_SECONDS:
+        return None
+    job = _latest_job_for(role, jobs)
+    if job is None:
+        return None
+    age = _fmt_age(now - (job.created_ts or now))
+    if state == "running":
+        return _cap_state(f"working {age}")
+    if (job.status or "").upper() == "INCOMPLETE":
+        return _cap_state(f"late-work {age}")
+    return None
+
+
 def _grid(headers, rows, styles=None):
     """Headers + rows -> a Unicode box-drawing table.  Column widths use VISIBLE length, so a
     `styles` map {col_index: fn(value)->ansi} can colour a column without breaking alignment.
@@ -176,17 +231,23 @@ def _status_rail(agents, jobs, roster):
             f"{_DIM}latest {_state_color(latest)}{latest}{_R}")
 
 
-def _team_block(agents, roster, jobs=()):
-    """TEAM section as a compact roster table: role, CLI, state, and current task at a glance."""
+def _team_block(agents, roster, jobs=(), activity=None, now=None):
+    """TEAM section as a compact roster table: role, CLI, state, and current task at a glance.
+    `activity` is the daemon's optional /status pane-activity map (role -> seconds since last pane
+    change, or None) -- absent on older daemons, in which case STATE renders EXACTLY as before."""
     out = [_label("TEAM")]
     rows = []
+    now = time.time() if now is None else now
 
     def _st(role, info):
         state = info.get("state", "idle")
         if state in ("idle", "", "-", None):                 # blocked asker is WAITING, never 'idle'
             to = _waiting_on(role, jobs)
             if to:
-                return f"waiting→{to}"
+                return f"waiting→{to}"                       # wins over working/late-work below
+        live = _activity_state(role, state, jobs, activity, now)
+        if live is not None:
+            return live
         return state
 
     if roster:
@@ -395,17 +456,20 @@ def _compact_core(agents, jobs, recent, roster, width=30):
 
 
 def render_core(agents, jobs, recent=5, roster=None, orient="v", compact=False, width=30,
-                mode="standard"):
+                mode="standard", activity=None, now=None):
     """Pure: (agents state, jobs[, roster]) -> the styled core-frame text (ANSI + box-drawing).
 
     Two sections, TEAM (who is doing what) and JOBS (newest `recent`, newest-first, with a
     hidden-count header). orient="h" puts them SIDE BY SIDE for wide/short core strips (Hub,
     Pages) where a stacked second table scrolls out of view; "v" stacks them (default).
     `compact=True` renders the narrow frame for the Files-IDE left rail at inner `width` (its outer
-    width is `width + 4`; the caller sizes the column to match so it never wraps)."""
+    width is `width + 4`; the caller sizes the column to match so it never wraps).
+    `activity`/`now` feed the TEAM section's 'working <age>'/'late-work <age>' states (see
+    _activity_state) -- both default to "no daemon activity data", the exact today's-rendering
+    fallback; `compact` mode does not consume them (its STATE cell stays the short roster label)."""
     if compact:
         return _compact_core(agents, jobs, recent, roster, width)
-    team, jobsb = _team_block(agents, roster, jobs), _jobs_block(jobs, recent)
+    team, jobsb = _team_block(agents, roster, jobs, activity=activity, now=now), _jobs_block(jobs, recent)
     rail = _status_rail(agents, jobs, roster)
     headline = f"{_CYAN}{_B}MKCREW core{_R}   {rail}"
     if mode and mode != "standard":                          # badge ONLY when non-default: standard
@@ -425,10 +489,12 @@ def render_core(agents, jobs, recent=5, roster=None, orient="v", compact=False, 
     return _box(rows, width)
 
 
-def frame_from_events(events, roster=None, orient="v", mode="standard"):
-    """Pure: a list of Event -> the rendered core frame (team + recent-jobs tables)."""
+def frame_from_events(events, roster=None, orient="v", mode="standard", activity=None):
+    """Pure: a list of Event -> the rendered core frame (team + recent-jobs tables). `activity` is
+    the daemon's optional live pane-activity map (see render_core); events alone can never carry it
+    -- raw pane captures are daemon-memory only, never persisted to the durable log."""
     return render_core(projections.agents(events), list(projections.jobs(events).values()),
-                       roster=roster, orient=orient, mode=mode)
+                       roster=roster, orient=orient, mode=mode, activity=activity)
 
 
 def _read_roster(project=None):
@@ -466,6 +532,29 @@ def _clear_screen():
     os.system("cls" if os.name == "nt" else "clear")
 
 
+def _fetch_activity():
+    """Best-effort GET of the running daemon's /status 'activity' map -- the ONE piece of tower
+    truth that can never live in the durable event log (raw pane captures are daemon-memory only,
+    by design not persisted across restarts). Returns None on anything short of a clean 200: no
+    port file (daemon not running/this project has no live cockpit), a stale/unreadable port, a
+    connection error, or an OLDER daemon whose /status has no 'activity' key -- frame_from_events
+    then renders BYTE-IDENTICAL to today (the hard backward-compat guarantee). Mirrors tui.py's
+    fetch_status() but kept local: coreview stays an INDEPENDENT event-log reader that merely
+    enriches itself with live daemon state when it happens to be reachable, never requires it."""
+    import json
+    import urllib.request
+    try:
+        port = int(config.port_file().read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/status", method="GET")
+        with urllib.request.urlopen(req, timeout=0.5) as r:
+            return json.loads(r.read()).get("activity")
+    except Exception:
+        return None
+
+
 def _center(frame, width):
     """Left-pad every line equally so the whole frame sits horizontally centred in `width` columns
     (preserves the tables' internal alignment; a no-op once the content is as wide as the pane)."""
@@ -492,7 +581,9 @@ def coreview_run(iterations=None, interval=2.0, clear=_clear_screen, roster=None
                 mode = teamconfig.load_mode(project) if project else "standard"
             except Exception:
                 mode = "standard"
-            frame = frame_from_events(log.replay(), roster=roster, orient=orient, mode=mode)
+            activity = _fetch_activity()   # None (daemon down / older daemon) -> today's rendering
+            frame = frame_from_events(log.replay(), roster=roster, orient=orient, mode=mode,
+                                      activity=activity)
             print(_center(frame, w) + _RESET, flush=True)
             n += 1
             if iterations is not None and n >= iterations:

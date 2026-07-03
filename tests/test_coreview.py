@@ -1,9 +1,16 @@
+import re
+
 from mkcrew.eventlog import Event
 from mkcrew.projections import JobView
 from mkcrew import coreview
 
 def _ev(seq, type, job_id="", actor="", data=None, ts=0.0):
     return Event(seq, ts, type, job_id, actor, data or {})
+
+def _strip_ansi(s):
+    """Remove ANSI colour codes so rendered text can be asserted on directly (mirrors the local
+    `strip` lambda in test_render_core_mode_badge_only_when_not_standard)."""
+    return re.sub(r"\x1b\[[0-9;]*m", "", s)
 
 
 def test_render_core_nonroster_shows_agents_and_jobs():
@@ -218,3 +225,175 @@ def test_render_core_mode_badge_only_when_not_standard():
     assert "mode thorough" in strip(coreview.render_core({}, [], mode="thorough"))
     assert "mode thorough" not in strip(coreview.render_core({}, []))
     assert "mode plan-first" in strip(coreview.render_core({}, [], mode="plan-first", orient="h"))
+
+
+# ---------------------------------------------------------------------------
+# Tower liveness: 'working <age>' / 'late-work <age>' STATE from the daemon's optional
+# /status "activity" map -- the truth the 49-minute-worker incident needed.
+# ---------------------------------------------------------------------------
+
+def test_fmt_age_formatting_examples():
+    """Compact age strings: minutes under an hour, 'HhMM' past an hour."""
+    assert coreview._fmt_age(12 * 60) == "12m"
+    assert coreview._fmt_age(49 * 60) == "49m"
+    assert coreview._fmt_age(65 * 60) == "1h05"    # 1h05 == 1 hour 5 minutes
+
+
+def test_render_core_working_state_with_fresh_activity():
+    """A role with an in-flight job AND fresh daemon 'activity' renders 'working <age>' instead of
+    the plain 'running' label -- age comes from the job's created_ts."""
+    now = 10_000.0
+    agents = {"worker1": {"state": "running"}}
+    jobs = [JobView(id="job-1", frm="main", to="worker1", status="DELIVERED",
+                    created_ts=now - 12 * 60)]           # started 12 minutes ago
+    activity = {"worker1": 5.0}                          # pane changed 5s ago -- fresh
+    out = _strip_ansi(coreview.render_core(agents, jobs, activity=activity, now=now))
+    assert "working 12m" in out
+    assert "running" not in out                          # replaced, not appended
+
+
+def test_render_core_late_work_state_when_incomplete_but_still_active():
+    """A role whose LATEST job is INCOMPLETE (the ask() ceiling gave up) but whose pane STILL has
+    fresh daemon 'activity' renders 'late-work <age>' -- INCOMPLETE must not silently read as
+    'stopped' (the exact truth the real incident needed)."""
+    now = 20_000.0
+    jobs = [JobView(id="job-1", frm="main", to="worker2", status="INCOMPLETE",
+                    created_ts=now - 49 * 60)]            # the 49-minute incident
+    activity = {"worker2": 30.0}                          # pane changed 30s ago -- fresh
+    roster = [{"role": "worker2", "provider": "codex"}]
+    out = _strip_ansi(coreview.render_core({}, jobs, roster=roster, activity=activity, now=now))
+    assert "late-work 49m" in out
+
+
+def test_render_core_activity_stale_or_absent_falls_back_to_incomplete():
+    """Stale (>=90s) or missing activity for an INCOMPLETE job's agent must NOT show 'late-work' --
+    it falls back to the plain terminal state exactly as today."""
+    now = 20_000.0
+    jobs = [JobView(id="job-1", frm="main", to="worker2", status="INCOMPLETE",
+                    created_ts=now - 49 * 60)]
+    roster = [{"role": "worker2", "provider": "codex"}]
+    stale = _strip_ansi(coreview.render_core({}, jobs, roster=roster,
+                                             activity={"worker2": 90.0}, now=now))
+    missing = _strip_ansi(coreview.render_core({}, jobs, roster=roster,
+                                               activity={}, now=now))
+    assert "late-work" not in stale
+    assert "late-work" not in missing
+
+
+def test_waiting_wins_over_late_work_state():
+    """A role whose latest INCOMING job is INCOMPLETE (late-work eligible, fresh activity) but who
+    is ALSO a currently-blocked asker (non-terminal outgoing job) still shows 'waiting-><to>' --
+    that existing precedence (checked first, returns early) must not change now that 'late-work' is
+    a candidate too.  ('working' requires the running-state branch, which never even reaches the
+    waiting-> check -- see test_render_core_blocked_asker_shows_waiting_not_idle for that
+    pre-existing, unchanged rule.)"""
+    now = 5000.0
+    jobs = [
+        JobView(id="in", frm="someone", to="main", status="INCOMPLETE", created_ts=now - 600),
+        JobView(id="out", frm="main", to="worker2", status="DELIVERED", created_ts=now - 60),
+    ]
+    activity = {"main": 1.0}
+    roster = [{"role": "main", "provider": "claude"}, {"role": "worker2", "provider": "codex"}]
+    out = _strip_ansi(coreview.render_core({}, jobs, roster=roster, activity=activity, now=now))
+    assert "waiting→worker2" in out
+    assert "late-work" not in out
+
+
+def test_activity_state_caps_at_16_chars():
+    """STATE text for 'working <age>'/'late-work <age>' never exceeds the 16-char STATE column
+    budget, even for an extreme (many-hour) age, and the rendered frame stays rectangular."""
+    now = 1_000_000.0
+    huge_age = 999 * 3600 + 59 * 60                        # deliberately absurd: ~999h59
+    jobs = [JobView(id="job-1", frm="main", to="worker1", status="DELIVERED",
+                    created_ts=now - huge_age)]
+    working = coreview._activity_state("worker1", "running", jobs, {"worker1": 1.0}, now)
+    assert working is not None and len(working) <= 16
+
+    jobs_incomplete = [JobView(id="job-1", frm="main", to="worker1", status="INCOMPLETE",
+                               created_ts=now - huge_age)]
+    late = coreview._activity_state("worker1", "idle", jobs_incomplete, {"worker1": 1.0}, now)
+    assert late is not None and len(late) <= 16
+
+    agents = {"worker1": {"state": "running"}}
+    out = coreview.render_core(agents, jobs, activity={"worker1": 1.0}, now=now)
+    widths = {coreview._vlen(ln) for ln in out.splitlines() if ln}
+    assert len(widths) == 1                                # every row still the same visible width
+
+
+def test_render_core_backward_compat_no_activity_matches_today():
+    """No daemon 'activity' data (call omitted, explicit None, or an empty map) renders BYTE-
+    IDENTICAL to today's render_core call -- the hard backward-compat guarantee for a tower pointed
+    at an older daemon whose /status has no 'activity' key."""
+    roster = [{"role": "main", "provider": "claude"}, {"role": "worker2", "provider": "codex"}]
+    agents = {"worker2": {"state": "running", "task": "hero imagery"}}
+    jobs = [JobView(id="j1", frm="main", to="worker2", status="DELIVERED", created_ts=1000.0)]
+
+    baseline = coreview.render_core(agents, jobs, roster=roster)   # today's call signature, untouched
+    assert coreview.render_core(agents, jobs, roster=roster, activity=None) == baseline
+    assert coreview.render_core(agents, jobs, roster=roster, activity={}) == baseline
+
+    # Also true for the empty/terminal scenes already covered above.
+    assert coreview.render_core({}, []) == coreview.render_core({}, [], activity=None)
+    inflight = [JobView(id="j1", frm="main", to="worker2", status="DELIVERED")]
+    assert (coreview.render_core(agents, inflight, roster=roster)
+            == coreview.render_core(agents, inflight, roster=roster, activity=None))
+
+
+def test_coreview_run_fetches_live_activity_from_daemon(tmp_path, monkeypatch, capsys):
+    """coreview_run best-effort fetches the daemon's /status 'activity' map each tick and feeds it
+    into the rendered frame: with a reachable daemon reporting fresh activity, an in-flight job
+    renders 'working <age>' in the live pane, end to end."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    import json as _json
+    import threading as _threading
+    import time as _time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from mkcrew.eventlog import EventLog
+    from mkcrew import config
+
+    now = _time.time()
+    log = EventLog(config.event_db())
+    log.append("job.created", job_id="job-1", actor="main",
+               data={"frm": "main", "to": "worker1", "text": "x"}, ts=now - 12 * 60)
+    log.append("job.delivered", job_id="job-1", actor="worker1")
+    log.close()
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+        def do_GET(self):
+            body = _json.dumps({"activity": {"worker1": 1.0}}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    port = httpd.server_address[1]
+    _threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    config.port_file().write_text(str(port), encoding="utf-8")
+    try:
+        coreview.coreview_run(iterations=1, interval=0.0, clear=lambda: None)
+        out = _strip_ansi(capsys.readouterr().out)
+        assert "working 12m" in out
+    finally:
+        httpd.shutdown()
+        httpd.server_close()   # release the listening socket now (a lingering one can flake later tests)
+
+
+def test_coreview_run_without_daemon_matches_today(tmp_path, monkeypatch, capsys):
+    """With no daemon reachable (no port file -- the common case in these tests / a cockpit-less
+    event-log read), coreview_run's output is BYTE-IDENTICAL to before this feature existed."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    from mkcrew.eventlog import EventLog
+    from mkcrew import config
+    log = EventLog(config.event_db())
+    log.append("job.created", job_id="job-1", actor="main",
+               data={"frm": "main", "to": "worker1", "text": "x"})
+    log.close()
+
+    coreview.coreview_run(iterations=1, interval=0.0, clear=lambda: None)
+    out = capsys.readouterr().out
+    assert "MKCREW core" in out
+    assert "worker1" in out
+    assert "working" not in out

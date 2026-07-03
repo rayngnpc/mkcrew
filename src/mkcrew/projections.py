@@ -14,6 +14,7 @@ class JobView:
     status: str = "PENDING"
     reply: str = ""
     delivered_at: float = 0.0
+    created_ts: float = 0.0   # epoch seconds of the job.created event -- job age for the tower
 
 
 def jobs(events):
@@ -22,7 +23,8 @@ def jobs(events):
         if e.type == "job.created":
             d = e.data
             out[e.job_id] = JobView(id=e.job_id, frm=d.get("frm", ""),
-                                    to=d.get("to", ""), text=d.get("text", ""))
+                                    to=d.get("to", ""), text=d.get("text", ""),
+                                    created_ts=e.ts)
         elif e.job_id in out:
             j = out[e.job_id]
             if e.type == "job.delivered":

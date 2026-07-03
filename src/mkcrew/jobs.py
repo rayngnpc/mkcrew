@@ -55,6 +55,24 @@ class JobStore:
             job.events.append({"ts": time.time(), "label": "delivered"})
             self._emit("job.delivered", job_id, job.to, {})
 
+    def rehydrate_incomplete(self, job_id: str, frm: str, to: str, text: str) -> Job:
+        """Reinsert a job whose last known event-log state was still in flight when a
+        PREVIOUS daemon process died (called only from Mkd's startup replay -- jobs.py
+        itself never reads the log). Bypasses open(): the id is FIXED to the original job_id
+        (a worker's late mk-done must still find it) and it is deliberately kept OUT of
+        _inflight -- this daemon isn't delivering it, so it must never block a fresh open()
+        for the same `to`, and it must never look "active" to inflight_for()/active_others().
+        Status goes straight to INCOMPLETE: the asker (the blocking ask() that would have
+        woken on completion) died with the old process, so there is truthfully no one left
+        waiting -- late_reply() then picks up the eventual mk-done exactly like any other
+        post-timeout finish."""
+        with self._lock:
+            job = Job(id=job_id, frm=frm, to=to, text=text, status="INCOMPLETE",
+                      reply="[restart] daemon restarted while this task was in flight")
+            job.events.append({"ts": time.time(), "label": "rehydrated"})
+            self._jobs[job_id] = job
+        return job
+
     def late_reply(self, job_id: str, reply: str) -> bool:
         """A worker finished AFTER its job was timed out (INCOMPLETE): record the real outcome in
         the ledger instead of dropping it. Returns True only when applied (job exists, INCOMPLETE,

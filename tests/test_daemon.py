@@ -454,6 +454,96 @@ def test_watchdog_stalled_codex_pickup_is_given_up(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Tower liveness: per-agent pane-activity feed (self._activity), fed by the SAME watchdog-tick
+# capture -- the daemon-side half of "the status pane must tell the truth".
+# ---------------------------------------------------------------------------
+
+def test_activity_recorded_for_registered_agent_with_no_inflight_job(tmp_path, monkeypatch):
+    """Every REGISTERED agent gets a pane-activity sample each watchdog tick, not just agents with
+    an in-flight job -- a worker whose job just went INCOMPLETE (its _wd entry is gone) must still
+    be tracked so the tower can see it's still alive."""
+    captures = {"%1": ["frame-a", "frame-b"]}
+    d, mux, clock = _setup_watchdog_daemon(tmp_path, monkeypatch, captures)
+    d.register_agent("worker", "%1")   # no job at all
+
+    clock[0] = 10.0
+    d._watchdog_tick()
+    assert d._activity["worker"]["changed_ts"] == 10.0   # first-ever capture counts as a change
+
+    clock[0] = 20.0
+    d._watchdog_tick()                                    # "frame-b" != "frame-a" -> changed again
+    assert d._activity["worker"]["changed_ts"] == 20.0
+
+
+def test_activity_changed_ts_frozen_while_pane_unchanged(tmp_path, monkeypatch):
+    """An UNCHANGING capture leaves changed_ts alone, so 'seconds since last change' grows with the
+    clock -- the exact signal /status exposes for the tower's 'is this still active' read."""
+    captures = {"%1": ["frozen frame"]}   # ScriptedCaptureMux repeats the last scripted entry
+    d, mux, clock = _setup_watchdog_daemon(tmp_path, monkeypatch, captures)
+    d.register_agent("worker", "%1")
+
+    clock[0] = 5.0
+    d._watchdog_tick()
+    first_changed = d._activity["worker"]["changed_ts"]
+    assert first_changed == 5.0
+
+    clock[0] = 95.0
+    d._watchdog_tick()                                    # same frame -> no change recorded
+    assert d._activity["worker"]["changed_ts"] == first_changed
+    assert d._now() - d._activity["worker"]["changed_ts"] == 90.0
+
+
+def test_activity_tracked_for_inflight_agent_via_watchdog_capture(tmp_path, monkeypatch):
+    """An agent WITH an in-flight (injected) job also feeds the activity map -- reusing the SAME
+    capture the zombie/progress checks already made, not a second one."""
+    captures = {"%1": ["working..."]}
+    d, mux, clock = _setup_watchdog_daemon(tmp_path, monkeypatch, captures)
+    d.register_agent("worker", "%1")
+    job, ev = _deliver_and_pickup(d)
+
+    clock[0] = 42.0
+    d._watchdog_tick()
+    assert "worker" in d._activity
+    assert d._activity["worker"]["changed_ts"] == 42.0
+
+
+def test_activity_reuses_capture_never_double_captures_a_pane(tmp_path, monkeypatch):
+    """One mux.capture() per pane per tick, period -- shared between the zombie/progress checks and
+    the activity feed. A real capture mux (like ScriptedCaptureMux) advances its cursor per call, so
+    a double-capture would desync it; assert the call count matches the tick count exactly."""
+    captures = {"%1": ["a", "b", "c", "d", "e"]}
+    d, mux, clock = _setup_watchdog_daemon(tmp_path, monkeypatch, captures)
+    d.register_agent("worker", "%1")
+    job, ev = _deliver_and_pickup(d)
+
+    for i in range(3):
+        clock[0] = float(i + 1)
+        d._watchdog_tick()
+
+    assert mux._calls["%1"] == 3   # exactly one capture per tick, never two
+
+
+def test_capture_failure_never_raises_and_is_not_recorded_as_activity(tmp_path, monkeypatch):
+    """A mux.capture() that raises (dead pane / mux error) must never propagate out of _poll_once,
+    and the failure itself must NOT be recorded as a pane change (treat as no-change)."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    class RaisingMux(FakeMux):
+        def capture(self, pid):
+            raise RuntimeError("psmux exploded")
+
+    d = Mkd(mux=RaisingMux(), poll_interval=9999)
+    clock = [0.0]
+    d._now = lambda: clock[0]
+    d._last_wd = 0.0
+    d.register_agent("worker", pane_id="%1")
+
+    d._poll_once()   # must not raise
+
+    assert "worker" not in d._activity
+
+
+# ---------------------------------------------------------------------------
 # P1-4: /jobs, /jobs/<id>, /repair endpoints
 # ---------------------------------------------------------------------------
 
@@ -1116,3 +1206,215 @@ def test_late_artifact_surfaces_to_lead_instead_of_dropping(tmp_path, monkeypatc
 
     d._poll_once()                                                    # artifact consumed exactly once
     assert len([l for p, l in mux.lines if "LATE RESULT" in l]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Restart-proofing: event-log replay rehydrates in-flight jobs, and a truly
+# unknown finish artifact is surfaced instead of dropped.
+# ---------------------------------------------------------------------------
+
+def test_restart_rehydrates_inflight_jobs_as_incomplete(tmp_path, monkeypatch):
+    """A job still in flight (delivered, never completed) when the daemon dies is reloaded on the
+    NEXT daemon's startup as INCOMPLETE with a '[restart]' reply -- same job_id, so a worker's
+    eventual mk-done still finds it. A job that reached DONE before the crash is NOT reloaded
+    (terminal jobs are skipped)."""
+    from mkcrew.eventlog import EventLog
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    log_path = tmp_path / "events.db"
+
+    log1 = EventLog(log_path)
+    d1 = Mkd(mux=FakeMux(), eventlog=log1)
+    d1.register_agent("worker", pane_id="%9")
+
+    done_job = d1.jobs.open(frm="main", to="worker", text="finishes before the crash")
+    d1._deliver(done_job)
+    d1.jobs.complete(done_job.id, reply="ALL GOOD", status="DONE")
+
+    inflight_job = d1.jobs.open(frm="main", to="worker", text="in flight when it dies")
+    d1._deliver(inflight_job)
+    log1.close()   # simulate the old daemon process dying with inflight_job still DELIVERED
+
+    log2 = EventLog(log_path)   # new daemon, SAME persistent log
+    d2 = Mkd(mux=FakeMux(), eventlog=log2)
+
+    rehydrated = d2.jobs.get(inflight_job.id)
+    assert rehydrated.id == inflight_job.id
+    assert rehydrated.status == "INCOMPLETE"
+    assert rehydrated.reply.startswith("[restart]")
+    assert rehydrated.to == "worker"
+
+    try:
+        d2.jobs.get(done_job.id)
+        assert False, "a job that reached DONE before the crash must not be reloaded"
+    except KeyError:
+        pass
+    log2.close()
+
+
+def test_worker3_scenario_late_done_after_restart(tmp_path, monkeypatch):
+    """End-to-end restart-proofing: a job is in flight when the daemon dies; the NEXT daemon
+    rehydrates it as INCOMPLETE; the worker's mk-done (written AFTER the restart, unaware the
+    daemon ever died) is then handled by the EXISTING late_reply()/_late_result() path -- the lead
+    sees a LATE RESULT line instead of the result vanishing into an artifact nobody tracks."""
+    from mkcrew.eventlog import EventLog
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    log_path = tmp_path / "events.db"
+
+    log1 = EventLog(log_path)
+    d1 = Mkd(mux=FakeMux(), eventlog=log1)
+    d1.register_agent("worker3", pane_id="%7")
+    job = d1.jobs.open(frm="main", to="worker3", text="deep task that outlives the daemon")
+    d1._deliver(job)
+    log1.close()   # the daemon dies with this job still DELIVERED
+
+    log2 = EventLog(log_path)
+    mux2 = FakeMux()
+    d2 = Mkd(mux=mux2, eventlog=log2)
+    d2.register_agent("main", pane_id="%0")
+    d2.register_agent("worker3", pane_id="%7")
+    assert d2.jobs.get(job.id).status == "INCOMPLETE"   # rehydrated by the new daemon's __init__
+
+    # The worker, unaware of the restart, eventually finishes and writes its artifact.
+    art = config.agent_finish_dir("worker3") / "done-late.json"
+    art.write_text(json.dumps({"job_id": job.id, "reply": "shipped after the restart"}), encoding="utf-8")
+
+    d2._poll_once()
+
+    j = d2.jobs.get(job.id)
+    assert j.reply == "[late] shipped after the restart"
+    late_lines = [l for p, l in mux2.lines if p == "%0" and "LATE RESULT" in l]
+    assert len(late_lines) == 1 and "worker3" in late_lines[0]
+    log2.close()
+
+
+def test_orphaned_artifact_notifies_lead_instead_of_dropping(tmp_path, monkeypatch):
+    """An artifact whose job_id was NEVER known to this daemon at all -- not even via rehydration
+    (e.g. a corrupt/missing event db, or a cross-version daemon) -- must not be silently dropped:
+    the lead gets an ORPHANED RESULT line instead. A second poll must not repeat the notification."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    mux = FakeMux()
+    d = Mkd(mux=mux)   # fresh, empty (:memory:) log -- nothing to rehydrate
+    d.register_agent("main", pane_id="%0")
+    d.register_agent("worker", pane_id="%9")
+
+    art = config.agent_finish_dir("worker") / "done-orphan.json"
+    art.write_text(json.dumps({"job_id": "task-neverexisted", "reply": "finished anyway"}), encoding="utf-8")
+
+    d._poll_once()
+
+    orphan_lines = [l for p, l in mux.lines if p == "%0" and "ORPHANED RESULT" in l]
+    assert len(orphan_lines) == 1
+    assert "worker" in orphan_lines[0] and "task-neverexisted" in orphan_lines[0]
+    assert "finished anyway" in orphan_lines[0]
+    assert not art.exists()   # consumed = DELETED (integration hardening): the notify already
+                              # happened and the event log is the ledger; leaving the file meant
+                              # every future daemon restart re-walked it (in-memory _seen dies).
+
+    d._poll_once()   # second poll must not re-notify
+    assert len([l for p, l in mux.lines if "ORPHANED RESULT" in l]) == 1
+
+
+def test_fresh_daemon_memory_log_rehydrates_nothing(tmp_path, monkeypatch):
+    """Regression guard: a fresh Mkd on the default (:memory:) event log has nothing to replay --
+    _rehydrate() is an exact no-op, so a brand-new store still lists zero jobs, same as before
+    this feature existed."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    d = Mkd(mux=FakeMux())
+    assert d.jobs.list_jobs() == []
+
+
+# Tower liveness: /status "activity" + /jobs "created_ts" (HTTP layer, additive-only)
+# ---------------------------------------------------------------------------
+
+def test_status_endpoint_includes_activity_and_keeps_existing_keys(tmp_path, monkeypatch):
+    """/status stays additive: every pre-existing key survives untouched, plus a new 'activity' map
+    (role -> seconds since its pane last changed, rounded to 1dp, or None if never captured)."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    mux = FakeMux()
+    d = Mkd(mux=mux, poll_interval=9999)
+    d.register_agent("worker", pane_id="%1")
+    d.register_agent("main", pane_id="%0")
+    clock = [100.0]
+    d._now = lambda: clock[0]
+    d._activity["worker"] = {"hash": hash("x"), "changed_ts": 90.0}   # 10s ago
+
+    httpd, base_url, _ = _start_server(d)
+    try:
+        status, data = _get(base_url, "/status")
+        assert status == 200
+        for key in ("panicked", "paused", "pause_reason", "agents", "jobs", "mode"):
+            assert key in data, f"pre-existing key {key!r} missing from /status"
+        assert data["agents"] == ["main", "worker"]
+        assert "activity" in data
+        assert data["activity"]["worker"] == 10.0
+        assert data["activity"]["main"] is None   # registered but never captured
+    finally:
+        httpd.shutdown()
+        d.stop()
+
+
+def test_get_jobs_includes_created_ts(tmp_path, monkeypatch):
+    """/jobs additively carries each job's created_ts (epoch seconds, from its own 'created'
+    event) -- the tower's job-age clock; existing keys are unchanged."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    mux = FakeMux()
+    d = Mkd(mux=mux, poll_interval=9999)
+    d.register_agent("worker", pane_id="%9")
+    job = d.jobs.open(frm="main", to="worker", text="hello")
+    d._deliver(job)
+
+    httpd, base_url, _ = _start_server(d)
+    try:
+        status, data = _get(base_url, "/jobs")
+        assert status == 200
+        job_entry = next(j for j in data["jobs"] if j["id"] == job.id)
+        assert job_entry["status"] == "DELIVERED"                # pre-existing key intact
+        assert isinstance(job_entry["created_ts"], float) and job_entry["created_ts"] > 0
+
+        status2, detail = _get(base_url, f"/jobs/{job.id}")
+        assert status2 == 200
+        assert detail["created_ts"] == job_entry["created_ts"]
+    finally:
+        httpd.shutdown()
+        d.stop()
+
+
+def test_restart_stays_silent_for_leftover_artifacts_of_done_jobs(tmp_path, monkeypatch):
+    """Integration hardening: a finish artifact left on disk for a job that COMPLETED in a
+    previous session (terminal in the replayed log) must NOT orphan-notify on restart -- it is
+    an undeleted file, not a lost result. Without the _replayed_terminal drain, every restart
+    would spam the lead once per leftover."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    from mkcrew.eventlog import EventLog
+    db = tmp_path / "events.db"
+    d1 = Mkd(mux=FakeMux(), eventlog=EventLog(str(db)))
+    d1.register_agent("worker", pane_id="%9")
+    j = d1.jobs.open(frm="main", to="worker", text="old task")
+    d1.jobs.complete(j.id, reply="done long ago")            # terminal BEFORE the restart
+    # leftover artifact file (the old behavior never deleted these)
+    art = config.agent_finish_dir("worker") / f"done-{j.id}-1.json"
+    art.write_text(json.dumps({"job_id": j.id, "actor": "worker",
+                               "reply": "done long ago", "ts": time.time()}), encoding="utf-8")
+    mux2 = FakeMux()
+    d2 = Mkd(mux=mux2, eventlog=EventLog(str(db)))          # the restart
+    d2.register_agent("worker", pane_id="%9")
+    d2.register_agent("main", pane_id="%1")
+    d2._poll_once()
+    assert not any("ORPHANED" in l or "LATE RESULT" in l for _p, l in mux2.lines), mux2.lines
+    assert not art.exists()                                  # drained: next restart re-walks nothing
+
+
+def test_processed_artifacts_are_deleted_from_disk(tmp_path, monkeypatch):
+    """Integration hardening: finish artifacts are a hand-off queue -- once processed (normal
+    completion here) the file is deleted, so leftovers cannot accumulate across sessions."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    d = Mkd(mux=FakeMux())
+    d.register_agent("worker", pane_id="%9")
+    j = d.jobs.open(frm="main", to="worker", text="t")
+    d._deliver(j)
+    art = config.agent_finish_dir("worker") / f"done-{j.id}-1.json"
+    art.write_text(json.dumps({"job_id": j.id, "actor": "worker",
+                               "reply": "OK", "ts": time.time()}), encoding="utf-8")
+    d._poll_once()
+    assert d.jobs.get(j.id).status == "DONE"
+    assert not art.exists()
