@@ -1058,12 +1058,36 @@ def test_thorough_mode_widens_stall_patience(tmp_path, monkeypatch):
 # --- deep-work ceiling + late results (the 40-min codex case) ---
 
 def test_ask_ceiling_triples_only_in_thorough(tmp_path, monkeypatch):
-    """thorough mode: the lead's blocking-ask ceiling triples (1800 -> 5400); standard/fast are
-    byte-identical to before (regression guard)."""
+    """thorough/architect: the lead's blocking-ask ceiling triples (1800 -> 5400); standard/fast
+    are byte-identical to before (regression guard)."""
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     assert Mkd(mux=FakeMux(), mode="thorough")._ask_ceiling(1800) == 5400
+    assert Mkd(mux=FakeMux(), mode="architect")._ask_ceiling(1800) == 5400
     assert Mkd(mux=FakeMux(), mode="standard")._ask_ceiling(1800) == 1800
     assert Mkd(mux=FakeMux(), mode="fast")._ask_ceiling(1800) == 1800
+
+
+def test_architect_envelope_carries_reply_contract(tmp_path, monkeypatch):
+    """architect mode appends the EVIDENCE-PACK reply contract to worker task envelopes -- but
+    NOT to the planner (plans aren't diffs), and a standard-mode envelope stays byte-identical
+    to the task text (regression: adding the mode must not change existing cockpits)."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    d = Mkd(mux=FakeMux(), mode="standard")
+    j = d.jobs.open(frm="main", to="worker1", text="do the thing")
+    d._write_inbox(j)
+    assert (config.agent_inbox_dir("worker1") / f"{j.id}.md").read_text(
+        encoding="utf-8") == "do the thing"                       # standard: untouched
+
+    d2 = Mkd(mux=FakeMux(), mode="architect")
+    jw = d2.jobs.open(frm="main", to="worker1", text="build X")
+    d2._write_inbox(jw)
+    jp = d2.jobs.open(frm="main", to="planner", text="plan X")
+    d2._write_inbox(jp)
+    w = (config.agent_inbox_dir("worker1") / f"{jw.id}.md").read_text(encoding="utf-8")
+    p = (config.agent_inbox_dir("planner") / f"{jp.id}.md").read_text(encoding="utf-8")
+    assert "EVIDENCE PACK" in w and "never ask main mid-task" in w
+    assert "no new abstractions" in w                             # form limits ride along
+    assert "EVIDENCE PACK" not in p                               # planner exempt
 
 
 def test_late_artifact_surfaces_to_lead_instead_of_dropping(tmp_path, monkeypatch):

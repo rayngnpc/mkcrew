@@ -683,7 +683,7 @@ def cmd_layout(argv):
 
 def cmd_mode(argv):
     """`mk mode [<mode>]`: show or switch the crew's working posture (standard / fast / thorough /
-    plan-first). Persists to team.config; a RUNNING cockpit switches LIVE — the daemon's watchdog
+    plan-first / architect). Persists to team.config; a RUNNING cockpit switches LIVE — the daemon's watchdog
     patience follows immediately and the lead gets a one-line posture update in its pane."""
     from . import prompts
     valid = ["standard"] + sorted(prompts._MODE_CLAUSE)

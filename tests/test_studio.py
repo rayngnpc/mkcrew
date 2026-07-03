@@ -25,7 +25,7 @@ def test_list_templates_reflects_registry():
 
 def test_list_modes_has_starter_set():
     keys = [m["key"] for m in studio.list_modes()]
-    assert keys == ["standard", "fast", "thorough", "plan-first"]   # postures, in display order
+    assert keys == ["standard", "fast", "thorough", "plan-first", "architect"]   # postures, in display order
     assert keys[0] == "standard"                                    # default stays first (UI preselects [0])
 
 
@@ -201,7 +201,7 @@ def test_server_serves_api_and_ui(monkeypatch, tmp_path):
         s, body = _get(httpd, "/api/clis")
         assert s == 200 and J.loads(body)["clis"]["claude"] is True and "claude" in J.loads(body)["models"]
         s, body = _get(httpd, "/api/templates"); assert s == 200 and any(x["key"] == "main-vertical" for x in J.loads(body)["templates"])
-        s, body = _get(httpd, "/api/modes");     assert s == 200 and len(J.loads(body)["modes"]) == 4
+        s, body = _get(httpd, "/api/modes");     assert s == 200 and len(J.loads(body)["modes"]) == 5
         s, body = _get(httpd, "/");              assert s == 200 and "MKCREW Studio" in body
     finally:
         httpd.shutdown()

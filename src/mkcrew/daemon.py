@@ -43,7 +43,7 @@ class Mkd:
         self.panes: dict[str, str] = {}
         self.providers: dict[str, str] = {}   # role -> provider (set at /register); delivery is provider-aware
         self.poll_interval = poll_interval
-        # Core-mode posture (standard/fast/thorough/plan-first). 'thorough' widens watchdog patience
+        # Core-mode posture (standard/fast/thorough/plan-first/architect). thorough+architect widen watchdog patience
         # (deep work legitimately takes long, quiet turns); everything else keeps the defaults.
         self.mode = mode
         self._events: dict[str, threading.Event] = {}
@@ -128,6 +128,17 @@ class Mkd:
             body += ("\n\n---\nFYI: teammates are working in this SAME checkout right now:\n"
                      f"{fyi}\n"
                      "Do not edit files their tasks clearly own; run `mk pend` if unsure.")
+        # Architect mode: the lead judges evidence packs instead of re-reading diffs, so the
+        # envelope tells the worker the reply shape. Planner replies are plans, not diffs -- skip.
+        if self.mode == "architect" and job.to != "planner":
+            body += ("\n\n---\nARCHITECT-MODE reply contract -- your mk-done reply must be an "
+                     "EVIDENCE PACK:\n"
+                     "1) changed files (file:line list)  2) proof per acceptance criterion "
+                     "(exact commands run + output tails)  3) risks/uncertainties  4) open "
+                     "questions.\n"
+                     "Keep the diff minimal: no new abstractions beyond the task; match the "
+                     "surrounding style. Blocked, or the task doesn't match reality? Say so IN "
+                     "your reply -- never ask main mid-task.")
         (config.agent_inbox_dir(job.to) / f"{job.id}.md").write_text(body, encoding="utf-8")
 
     def _wake(self, role: str) -> None:
@@ -200,10 +211,10 @@ class Mkd:
         self._on_job_completed(job.id, status="INCOMPLETE")
 
     def _ask_ceiling(self, timeout: float) -> float:
-        """thorough mode expects DEEP work: triple the lead's blocking-ask ceiling (1800s -> 90 min).
+        """thorough/architect expect DEEP worker turns: triple the blocking-ask ceiling (1800s -> 90 min).
         Every other mode is unchanged. (Live case: codex legitimately worked 40+ min and the 30-min
         ask timed it out TWICE — the work survived on disk but the reply was lost.)"""
-        return timeout * (3 if self.mode == "thorough" else 1)
+        return timeout * (3 if self.mode in ("thorough", "architect") else 1)
 
     def _late_result(self, job_id, agent, reply) -> None:
         """A finish artifact for an already-timed-out job: the WORK is real (it's on disk) — surface
@@ -445,8 +456,8 @@ class Mkd:
             # lead's ask() unblocks early.  A still-progressing worker keeps re-arming progress_ts
             # above and is never cut off.
             if injected:
-                # thorough mode = patient watchdog: deep tasks stay quiet 3x longer before giveup
-                stall = POST_PICKUP_STALL_SECONDS * (3 if self.mode == "thorough" else 1)
+                # thorough/architect = patient watchdog: deep tasks stay quiet 3x longer before giveup
+                stall = POST_PICKUP_STALL_SECONDS * (3 if self.mode in ("thorough", "architect") else 1)
                 if self._now() - wd.get("progress_ts", self._now()) > stall:
                     self._giveup(inflight, "[stall_giveup] worker picked up the task but stopped making progress")
                 continue
@@ -454,7 +465,7 @@ class Mkd:
             # Not yet picked up: the content-free wake may not have landed (an idle TUI ignores a
             # bare Enter) — re-wake on an interval, then give up if it's never picked up.
             if self._now() - wd["delivered_ts"] > WAKE_RETRY_SECONDS:
-                if wd["wakes"] < (MAX_RETRY * 2 if self.mode == "thorough" else MAX_RETRY):
+                if wd["wakes"] < (MAX_RETRY * 2 if self.mode in ("thorough", "architect") else MAX_RETRY):
                     self._wake(agent)
                     self.jobs.record_event(inflight.id, "rewake")
                     wd["wakes"] += 1

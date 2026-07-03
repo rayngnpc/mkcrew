@@ -223,6 +223,23 @@ def test_thorough_and_plan_first_mode_clauses():
     assert "THOROUGH MODE" not in base and "PLAN-FIRST MODE" not in base
 
 
+def test_architect_mode_clause():
+    """architect = flagship-as-judge. The clause must carry ALL five disciplines (hands-off,
+    contracts, cheap-verifier pyramid, batching, audits) plus the honesty additions (delegation
+    test, calibration, no mid-task counter-asks); 'standard' stays byte-identical (regression)."""
+    from mkcrew import prompts
+    base = prompts.lead_prompt("C:/x/mk.exe")
+    arch = prompts.lead_prompt("C:/x/mk.exe", mode="architect")
+    assert "ARCHITECT MODE" in arch and "\n" not in arch
+    for marker in ("Never read source files", "CONTRACT", "acceptance criteria",
+                   "DIFFERENT worker", "Spot-audit", "delegation test", "Calibrate",
+                   "never by asking you mid-task", "no new abstractions"):
+        assert marker in arch, f"clause lost its '{marker}' discipline"
+    assert "ARCHITECT MODE" not in base
+    live = prompts.mode_update_prompt("architect")          # `mk mode architect` live switch
+    assert "ARCHITECT MODE" in live and "\n" not in live
+
+
 def test_mode_update_prompt_live_switch_line():
     """`mk mode <m>` sends a single-line posture update: names the mode, carries its clause; an
     unknown/standard mode falls back to the balanced-default wording. Single-line (send_line)."""

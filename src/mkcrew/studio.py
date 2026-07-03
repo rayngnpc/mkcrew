@@ -90,6 +90,7 @@ MODES = [
     {"key": "fast",       "name": "Fast",       "desc": "No gates -- ship directly. Skips the plan/review/verify ceremony."},
     {"key": "thorough",   "name": "Thorough",   "desc": "Correctness over speed: review gate on every result, claims verified by running them. Patient watchdog + 90-min ask ceiling for deep work."},
     {"key": "plan-first", "name": "Plan First", "desc": "The lead presents its full task breakdown and waits for your OK before the first delegation."},
+    {"key": "architect",  "name": "Architect",  "desc": "Flagship-as-judge: the lead never touches code -- it writes task contracts, workers implement and cross-verify, it arbitrates on evidence packs and spot-audits. Near-solo quality at a fraction of the lead's tokens; 90-min ask ceiling."},
 ]
 # A RUNNING cockpit can switch anytime:  mk mode <key>  (persists + updates daemon and lead live).
 
