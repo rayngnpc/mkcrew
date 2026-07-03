@@ -34,6 +34,12 @@ WAKE_NUDGE = "MKCREW wake ping. End this turn now; do not inspect files or run c
 MAX_CONSECUTIVE_FAILURES = 3  # consecutive INCOMPLETE give-ups before pause
 ZOMBIE_TICKS = 3              # consecutive blank-capture ticks before zombie give-up
 
+# An ORPHANED-RESULT notice (finish artifact whose job_id this daemon has never heard of) is only
+# typed to the lead when the artifact is at most this old (wall-clock). Finish dirs are global
+# per-role, the event log is per-project -- so on a NEW project every historical leftover on the
+# machine is "unknown"; only a FRESH unknown can be a genuinely lost live result.
+ORPHAN_FRESH_SECONDS = 900.0
+
 
 class Mkd:
     def __init__(self, mux=None, poll_interval=0.2, eventlog=None, mode="standard"):
@@ -246,14 +252,19 @@ class Mkd:
         ask timed it out TWICE — the work survived on disk but the reply was lost.)"""
         return timeout * (3 if self.mode in ("thorough", "architect") else 1)
 
-    def _late_result(self, job_id, agent, reply) -> None:
+    def _late_result(self, job_id, agent, reply, ts=None) -> None:
         """A finish artifact for a job that is not the current in-flight job: the WORK is real
         (it's on disk) -- surface it instead of dropping it.
           - Known job, still INCOMPLETE (timed out, or rehydrated after a restart -- see
             _rehydrate()): late_reply() records the real reply; tell the lead LATE RESULT.
           - job_id matches NO job at all (replay couldn't know it -- a corrupt/missing event
-            db, or a cross-version daemon): ORPHANED RESULT, same don't-re-delegate framing,
-            so a genuinely untracked result is never silently lost either.
+            db, or a cross-version daemon): ORPHANED RESULT, same don't-re-delegate framing --
+            but ONLY when the artifact is FRESH (`ts` within ORPHAN_FRESH_SECONDS of wall-clock
+            now). Finish dirs are GLOBAL per-role while the event log is per-PROJECT, so a NEW
+            project's daemon knows none of the machine's historical job ids: without the
+            freshness gate its first poll walked WEEKS of leftover artifacts and typed one
+            orphan line per file into the lead (live incident). A genuinely-lost live result is
+            always minutes old; anything stale (or missing ts) drains silently.
         A job that EXISTS but isn't eligible (DONE/PANICKED, or already late-replied once) is
         untouched -- late_reply()'s own guards keep that silent exactly like today, so
         heartbeats/stale artifacts never re-notify."""
@@ -278,6 +289,11 @@ class Mkd:
         if job_id in self._replayed_terminal:
             return  # leftover artifact of a job that COMPLETED in a previous session (terminal in
                     # the replayed log) -- not a lost result, just an undeleted file; stay silent.
+        # Wall-clock comparison on purpose: artifact ts is time.time() from mk-done (done_cli),
+        # while self._now is monotonic and NOT comparable across processes.
+        if not ts or (time.time() - ts) > ORPHAN_FRESH_SECONDS:
+            return  # stale or unstamped: historical backlog / another project's leftover -- drain
+                    # silently (the caller deletes it); never type old history into a live lead.
         pane = self.panes.get("main")
         if pane is not None:
             try:
@@ -390,7 +406,8 @@ class Mkd:
                     # heartbeat / other-job artifact — OR a LATE finish for a job the ask already
                     # timed out (it left the in-flight set, so it can never match here). Surface it;
                     # late_reply() no-ops for anything that isn't a timed-out job.
-                    self._late_result(data.get("job_id"), agent, data.get("reply", ""))
+                    self._late_result(data.get("job_id"), agent, data.get("reply", ""),
+                                      ts=data.get("ts"))
                     self._consume_artifact(art)
                     continue
                 self.jobs.complete(inflight.id, reply=data.get("reply", ""))

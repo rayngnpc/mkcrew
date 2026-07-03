@@ -1298,7 +1298,8 @@ def test_orphaned_artifact_notifies_lead_instead_of_dropping(tmp_path, monkeypat
     d.register_agent("worker", pane_id="%9")
 
     art = config.agent_finish_dir("worker") / "done-orphan.json"
-    art.write_text(json.dumps({"job_id": "task-neverexisted", "reply": "finished anyway"}), encoding="utf-8")
+    art.write_text(json.dumps({"job_id": "task-neverexisted", "reply": "finished anyway",
+                               "ts": time.time()}), encoding="utf-8")   # FRESH: orphan notice requires it
 
     d._poll_once()
 
@@ -1418,3 +1419,27 @@ def test_processed_artifacts_are_deleted_from_disk(tmp_path, monkeypatch):
     d._poll_once()
     assert d.jobs.get(j.id).status == "DONE"
     assert not art.exists()
+
+
+def test_stale_unknown_artifacts_drain_silently_on_new_project(tmp_path, monkeypatch):
+    """LIVE INCIDENT regression: finish dirs are GLOBAL per-role but the event log is
+    per-PROJECT, so a NEW project's daemon (empty log) knows none of the machine's historical
+    job ids -- weeks of leftover artifacts must NOT be typed into the lead one line at a time.
+    Stale/unstamped unknowns drain silently (deleted, no notice); only a FRESH unknown (a
+    genuinely lost live result) may notify."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    mux = FakeMux()
+    d = Mkd(mux=mux)                                     # brand-new project: empty (:memory:) log
+    d.register_agent("worker1", pane_id="%2")
+    d.register_agent("main", pane_id="%1")
+    fdir = config.agent_finish_dir("worker1")
+    for i, ts in enumerate([time.time() - 7 * 86400,     # a week old
+                            time.time() - 3600,          # an hour old
+                            None]):                      # unstamped (oldest format)
+        payload = {"job_id": f"task-history-{i}", "reply": "old work"}
+        if ts is not None:
+            payload["ts"] = ts
+        (fdir / f"done-task-history-{i}-{i}.json").write_text(json.dumps(payload), encoding="utf-8")
+    d._poll_once()
+    assert not any("ORPHANED" in l for _p, l in mux.lines), mux.lines   # not one line typed
+    assert not list(fdir.glob("*.json"))                                # backlog drained
