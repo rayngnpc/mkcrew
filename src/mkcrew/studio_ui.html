@@ -789,21 +789,29 @@ async function openModal(key) {
     if (curProv !== 'claude' && String(curModel).startsWith('claude-')) curModel = '';  // stale roster default -> show the dropdown, not custom
     const curEff   = STATE.efforts[i] != null ? STATE.efforts[i] : (agent.effort || '');
     const roleDesc = i===0 ? 'lead' : (role.includes('rev') ? 'review gate' : 'worker');
+    // A provider string that isn't a known CLI is a CUSTOM launch command (build_team runs it
+    // verbatim). Without this the select showed its FIRST option ("claude") while STATE kept the
+    // command -> the UI looked like claude but every save round-tripped custom (live incident).
+    const isCustomProv = !!curProv && curProv !== 'custom' && !available.includes(curProv);
     const provOpts = available.map(p => `<option value="${p}" ${p===curProv?'selected':''}>${p}</option>`).join('')
-                   + `<option value="custom" ${curProv==='custom'?'selected':''}>custom…</option>`;
+                   + `<option value="custom" ${(isCustomProv||curProv==='custom')?'selected':''}>custom…</option>`;
     const row = document.createElement('div');
     row.className = 'arow';
     row.innerHTML =
       `<span class="av ${avClass(role)}"></span>` +
       `<div class="who"><b>${role}</b><small>${roleDesc}</small></div>` +
       `<select class="m-prov" data-idx="${i}">${provOpts}</select>` +
-      `<span class="m-modelcell" data-idx="${i}">${_modelCell(i, curProv, curModel)}</span>` +
-      _thinkControl(i, curProv, curEff);
+      `<input class="m-prov-x" placeholder="launch command (runs verbatim)" ` +
+      `value="${isCustomProv?_esc(curProv):''}" ${isCustomProv?'':'hidden'}>` +
+      `<span class="m-modelcell" data-idx="${i}">${_modelCell(i, isCustomProv?'custom':curProv, curModel)}</span>` +
+      _thinkControl(i, isCustomProv?'custom':curProv, curEff);
     agentsEl.appendChild(row);
     _bindModelCell(row.querySelector('.m-modelcell'));
     // provider change -> rebuild that row's model dropdown + thinking control for the new CLI
     row.querySelector('.m-prov').onchange = (e) => {
       const p = e.target.value;
+      const x = row.querySelector('.m-prov-x');
+      if (p === 'custom') { x.hidden = false; x.focus(); } else { x.hidden = true; }
       const cell = row.querySelector('.m-modelcell');
       cell.innerHTML = _modelCell(i, p, '');
       _bindModelCell(cell);
@@ -815,7 +823,10 @@ async function openModal(key) {
 
 function confirmModal() {
   document.querySelectorAll('#m-agents .arow').forEach((row, i) => {
-    STATE.providers[i] = row.querySelector('.m-prov').value;
+    // 'custom' saves the visible COMMAND (runs verbatim; blank -> roster default), never the
+    // literal word "custom" (build_team would have launched the string "custom" as a command).
+    const sel = row.querySelector('.m-prov'), x = row.querySelector('.m-prov-x');
+    STATE.providers[i] = sel.value === 'custom' ? (x.value || '').trim() : sel.value;
     STATE.models[i]    = _readModel(row.querySelector('.m-modelcell'));
     const th = row.querySelector('.m-think');
     STATE.efforts[i]   = th ? th.value : '';
