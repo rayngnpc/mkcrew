@@ -513,16 +513,26 @@ def _read_roster(project=None):
 
 
 def status_main():
-    """`mk status`: print one core frame read from the durable event log."""
+    """`mk status`: print one core frame read from the durable event log -- WITH the configured
+    roster, mode badge, and live pane activity, exactly like the tower pane. Events alone list an
+    agent only after its first job, so a FRESH cockpit rendered an EMPTY team table here (live
+    incident: the lead ran `mk status`, saw no crew, and spiraled into role discovery even though
+    its bootstrap named every teammate). The roster keeps idle agents visible from second zero."""
     try:
         reconfigure = getattr(sys.stdout, "reconfigure", None)
         if callable(reconfigure):
             reconfigure(encoding="utf-8")   # box-drawing / colour safety when piped
     except Exception:
         pass
+    try:
+        from . import teamconfig
+        mode = teamconfig.load_mode(os.getcwd())
+    except Exception:
+        mode = "standard"
     log = EventLog(config.event_db())
     try:
-        print(frame_from_events(log.replay()))
+        print(frame_from_events(log.replay(), roster=_read_roster(), mode=mode,
+                                activity=_fetch_activity()))
     finally:
         log.close()
     return 0

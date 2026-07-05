@@ -397,3 +397,26 @@ def test_coreview_run_without_daemon_matches_today(tmp_path, monkeypatch, capsys
     assert "MKCREW core" in out
     assert "worker1" in out
     assert "working" not in out
+
+
+def test_status_main_shows_roster_on_fresh_cockpit(tmp_path, monkeypatch, capsys):
+    """LIVE INCIDENT: `mk status` rendered from events only, so a FRESH cockpit (zero jobs ->
+    zero events) printed an EMPTY team table -- the lead saw "no crew" and spiraled into role
+    discovery despite a complete bootstrap roster. status_main must show the configured roster
+    (idle agents included) and the mode badge from second zero."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    import json, os
+    proj = tmp_path / "proj"; (proj / ".mkcrew").mkdir(parents=True)
+    (proj / ".mkcrew" / "team.config").write_text(json.dumps({
+        "entry_window": "main", "layout": "hub", "mode": "architect",
+        "agents": [{"role": "main", "provider": "claude"},
+                   {"role": "worker1", "provider": "claude"},
+                   {"role": "worker2", "provider": "codex"}]}), encoding="utf-8")
+    old = os.getcwd(); os.chdir(proj)
+    try:
+        assert coreview.status_main() == 0
+    finally:
+        os.chdir(old)
+    out = _strip_ansi(capsys.readouterr().out)
+    assert "worker1" in out and "worker2" in out       # idle crew VISIBLE with zero events
+    assert "mode architect" in out                     # posture badge rides along
