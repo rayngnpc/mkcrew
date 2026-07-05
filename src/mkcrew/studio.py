@@ -463,7 +463,15 @@ def make_server(project_dir=None, port: int = 0) -> ThreadingHTTPServer:
 
 
 def serve(project_dir=None, port: int = 8765, open_browser: bool = True) -> None:
-    httpd = make_server(project_dir, port)
+    try:
+        httpd = make_server(project_dir, port)
+    except OSError:
+        # Windows reserves MOVING blocks of TCP ports for Hyper-V/WSL (winnat) -- `netsh interface
+        # ipv4 show excludedportrange protocol=tcp`. When 8765 lands inside one, bind dies with
+        # WinError 10013 (permission), and the blocks shift across reboots, so "it worked
+        # yesterday". Same handling covers 10048 (port taken). Fall back to an OS-picked free
+        # port: the URL below is always built from the REAL bound port, so print/browser follow.
+        httpd = make_server(project_dir, 0)
     url = f"http://127.0.0.1:{httpd.server_address[1]}"
     print(f"MKCREW Studio: {url}  (Ctrl-C to stop)")
     if open_browser:

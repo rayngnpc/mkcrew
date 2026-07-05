@@ -308,3 +308,29 @@ def test_profiles_storage_layer_roundtrips_full_config(tmp_path, monkeypatch):
     got = next(p for p in profiles.list_profiles() if p["name"] == "Complete")
     for key, val in full.items():
         assert got[key] == val, key
+
+
+def test_serve_falls_back_to_free_port_when_default_is_denied(tmp_path, monkeypatch):
+    """LIVE INCIDENT: Windows (winnat/Hyper-V) reserves moving TCP port blocks; when 8765 lands
+    inside one, bind raises WinError 10013 and `mk studio` died with a traceback. serve() must
+    fall back to an OS-picked port -- and the printed/opened URL always carries the REAL port."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    import socket, threading
+    blocker = socket.socket()
+    blocker.bind(("127.0.0.1", 0))                      # occupy a port -> same OSError family
+    busy_port = blocker.getsockname()[1]
+    opened = {}
+    monkeypatch.setattr(studio.webbrowser, "open", lambda url: opened.setdefault("url", url))
+    served = {}
+    real_forever = studio.ThreadingHTTPServer.serve_forever
+    def capture_and_stop(self, *a, **k):                # run serve() to its URL logic, then return
+        served["port"] = self.server_address[1]
+        self.server_close()
+    monkeypatch.setattr(studio.ThreadingHTTPServer, "serve_forever", capture_and_stop)
+    try:
+        studio.serve(project_dir=tmp_path, port=busy_port, open_browser=True)
+    finally:
+        blocker.close()
+        monkeypatch.setattr(studio.ThreadingHTTPServer, "serve_forever", real_forever)
+    assert served["port"] != busy_port and served["port"] > 0      # fell back to a REAL free port
+    assert opened["url"].endswith(f":{served['port']}")            # browser got the actual port
