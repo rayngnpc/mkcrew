@@ -421,6 +421,7 @@ class Mkd:
                     self._events[inflight.id].set()
                 self._wd.pop(inflight.id, None)
                 self._on_job_completed(inflight.id, status="DONE")
+                self._evidence_gate(inflight, data.get("reply", ""))
                 inflight_by_id.pop(inflight.id, None)
                 self._consume_artifact(art)
                 break
@@ -454,6 +455,35 @@ class Mkd:
         if self._now() - self._last_wd >= WATCHDOG_INTERVAL_SECONDS:
             self._watchdog_tick()
             self._last_wd = self._now()
+
+    def _evidence_gate(self, job, reply: str) -> None:
+        """Architect-mode completion tripwire -- HARNESS-enforced, not prompt-enforced: prompted
+        procedure alone measures ~70-90% compliance while an external check runs near 100%, and
+        agents demonstrably self-certify. The envelope's reply contract asks for a checklist with
+        command proof; a reply that clearly lacks that shape (too short, or no numbered/ticked
+        item at all) is stamped into the ledger ('thin_evidence' -- folded by `mk stats`) and the
+        lead is told to treat it as UNVERIFIED. Deliberately a tripwire, not a wall: the job still
+        completes (a blocking gate could deadlock the ask), the lead just stops accepting a bare
+        'done' as proof. Planner replies are plans, not evidence -- exempt."""
+        if self.mode != "architect" or job.to == "planner":
+            return
+        r = (reply or "").strip()
+        if len(r) >= 200 and ("1)" in r or "1." in r or "[x]" in r.lower()):
+            return
+        try:
+            self.jobs.record_event(job.id, "thin_evidence")
+        except Exception:
+            pass
+        pane = self.panes.get("main")
+        if pane is not None:
+            try:
+                self.mux.send_line(
+                    pane,
+                    f"[MKCREW] EVIDENCE GATE: {job.to}'s reply for {job.id} lacks the evidence-pack "
+                    f"shape (checklist + command proof). Treat it as UNVERIFIED -- re-ask for the "
+                    f"proof or send your verifier before accepting.")
+            except Exception:
+                pass
 
     @staticmethod
     def _consume_artifact(art) -> None:

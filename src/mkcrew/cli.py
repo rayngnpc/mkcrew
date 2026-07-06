@@ -547,6 +547,60 @@ def cmd_pend(argv):
         print(fmt.format(j["id"], j["from"], j["to"], j["status"], j["retry_count"]))
 
 
+def cmd_stats(argv):
+    """`mk stats`: per-worker delivery metrics folded from the durable event log -- jobs, done vs
+    failed, median duration, late results, and thin-evidence flags (architect's evidence gate).
+    The crew's measurement loop: you cannot tune a mode you cannot see. Offline reader (this
+    project's events.db); needs no running daemon."""
+    from .eventlog import EventLog
+    log = EventLog(config.event_db())
+    try:
+        events = list(log.replay())
+    finally:
+        log.close()
+    jobs = {}
+    for e in events:
+        if e.type == "job.created":
+            jobs[e.job_id] = {"to": e.data.get("to", "?"), "t0": e.ts, "t1": None,
+                              "status": "OPEN", "thin": False, "late": False}
+            continue
+        j = jobs.get(e.job_id)
+        if j is None:
+            continue
+        if e.type == "job.done":
+            j["t1"], j["status"] = e.ts, e.data.get("status", "DONE")
+        elif e.type == "job.late_done":
+            j["late"] = True
+        elif e.type == "job.event" and e.data.get("label") == "thin_evidence":
+            j["thin"] = True
+    if not jobs:
+        print("no jobs in this project's ledger yet")
+        return
+    per = {}
+    for j in jobs.values():
+        w = per.setdefault(j["to"], {"n": 0, "done": 0, "inc": 0, "thin": 0, "late": 0, "durs": []})
+        w["n"] += 1
+        if j["status"] == "DONE":
+            w["done"] += 1
+            if j["t1"] is not None:
+                w["durs"].append(j["t1"] - j["t0"])
+        elif j["status"] in ("INCOMPLETE", "PANICKED"):
+            w["inc"] += 1
+        w["thin"] += j["thin"]
+        w["late"] += j["late"]
+    import statistics
+    fmt = "{:<10}  {:>5}  {:>5}  {:>6}  {:>8}  {:>5}  {:>5}"
+    print(fmt.format("WORKER", "JOBS", "DONE", "FAILED", "MED-TIME", "LATE", "THIN"))
+    print("-" * 58)
+    for w in sorted(per):
+        s = per[w]
+        med = f"{statistics.median(s['durs']) / 60:.1f}m" if s["durs"] else "-"
+        print(fmt.format(w, s["n"], s["done"], s["inc"], med, s["late"], s["thin"]))
+    open_n = sum(1 for j in jobs.values() if j["status"] == "OPEN")
+    print(f"\n{len(jobs)} job(s) total, {open_n} open.  THIN = completed without the "
+          "evidence-pack shape (architect gate); LATE = finished after the ask timed out.")
+
+
 def cmd_trace(argv):
     """Show full detail and event log for a single job."""
     if not argv:
@@ -1025,7 +1079,7 @@ def cmd_doctor(argv):
 COMMANDS = {"init": cmd_init, "start": cmd_start, "attach": cmd_attach,
             "kill": cmd_kill, "panic": cmd_panic, "add": cmd_add,
             "open": cmd_open, "workspaces": cmd_workspaces, "doctor": cmd_doctor,
-            "pend": cmd_pend, "trace": cmd_trace, "repair": cmd_repair,
+            "pend": cmd_pend, "trace": cmd_trace, "stats": cmd_stats, "repair": cmd_repair,
             "verify": cmd_verify, "resume": cmd_resume, "tui": cmd_tui,
             "layout": cmd_layout, "relayout": cmd_relayout, "studio": cmd_studio,
             "mode": cmd_mode}
@@ -1039,7 +1093,7 @@ def main(argv=None) -> int:
         from .coreview import status_main
         return status_main()
     if not argv or argv[0] not in COMMANDS:
-        print("usage: mk {init|start|open|workspaces|doctor|attach|kill|panic|add|pend|trace|repair|verify|resume|tui|layout|relayout|studio|ask|status}")
+        print("usage: mk {init|start|open|workspaces|doctor|attach|kill|panic|add|pend|trace|stats|repair|verify|resume|tui|layout|relayout|studio|ask|status}")
         return 2
     COMMANDS[argv[0]](argv[1:])
     return 0

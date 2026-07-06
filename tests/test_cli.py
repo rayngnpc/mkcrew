@@ -1327,3 +1327,40 @@ def test_cmd_mode_shows_sets_and_validates(tmp_path, monkeypatch, capsys):
     assert "next" in capsys.readouterr().out                # daemon not running -> next-start note
     with pytest.raises(SystemExit):
         cli.cmd_mode(["warp9"])
+
+
+def test_cmd_stats_folds_ledger_per_worker(tmp_path, monkeypatch, capsys):
+    """`mk stats` = the measurement loop: folds the durable event log into per-worker rows
+    (jobs / done / failed / median time / late / thin) with no daemon required."""
+    import os, json, time
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    proj = tmp_path / "proj"; proj.mkdir()
+    old = os.getcwd(); os.chdir(proj)
+    try:
+        from mkcrew.daemon import Mkd
+        from mkcrew.eventlog import EventLog
+        from mkcrew import config as cfg
+
+        class _Mux:
+            def __getattr__(self, k): return lambda *a, **kw: ""
+
+        d = Mkd(mux=_Mux(), mode="architect", eventlog=EventLog(cfg.event_db()))
+        j1 = d.jobs.open(frm="main", to="worker1", text="a")
+        d.jobs.complete(j1.id, reply="done", status="DONE")
+        d.jobs.record_event(j1.id, "thin_evidence")            # gate stamped it
+        j2 = d.jobs.open(frm="main", to="worker2", text="b")
+        d.jobs.complete(j2.id, reply="[timeout] no response", status="INCOMPLETE")
+        d.jobs.late_reply(j2.id, "finished late but real")     # late result recorded
+        j3 = d.jobs.open(frm="main", to="worker1", text="c")   # still open
+
+        cli.cmd_stats([])
+        out = capsys.readouterr().out
+        assert "WORKER" in out and "worker1" in out and "worker2" in out
+        assert "3 job(s) total, 1 open" in out
+        # worker1 row: 2 jobs, 1 done, 1 thin;  worker2 row: 1 failed, 1 late
+        w1 = next(l for l in out.splitlines() if l.startswith("worker1"))
+        w2 = next(l for l in out.splitlines() if l.startswith("worker2"))
+        assert w1.split()[1] == "2" and w1.split()[2] == "1" and w1.split()[-1] == "1"
+        assert w2.split()[3] == "1" and w2.split()[5] == "1"
+    finally:
+        os.chdir(old)

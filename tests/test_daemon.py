@@ -1445,3 +1445,40 @@ def test_stale_unknown_artifacts_drain_silently_on_new_project(tmp_path, monkeyp
     d._poll_once()
     assert not any("ORPHANED" in l for _p, l in mux.lines), mux.lines   # not one line typed
     assert not list(fdir.glob("*.json"))                                # backlog drained
+
+
+def test_architect_evidence_gate_flags_thin_replies(tmp_path, monkeypatch):
+    """HARNESS-enforced completion gate (architect only): a completed reply that clearly lacks
+    the evidence-pack shape is stamped 'thin_evidence' in the ledger and the lead is told to
+    treat it as UNVERIFIED. A rich checklist reply passes silently; planner is exempt; standard
+    mode never gates (byte-identical behavior guard)."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    def run_one(mode, to, reply):
+        mux = FakeMux()
+        d = Mkd(mux=mux, mode=mode)
+        d.register_agent(to, pane_id="%9")
+        d.register_agent("main", pane_id="%1")
+        j = d.jobs.open(frm="main", to=to, text="t")
+        d._deliver(j)
+        art = config.agent_finish_dir(to) / f"done-{j.id}-1.json"
+        art.write_text(json.dumps({"job_id": j.id, "actor": to, "reply": reply,
+                                   "ts": time.time()}), encoding="utf-8")
+        d._poll_once()
+        gate = [l for _p, l in mux.lines if "EVIDENCE GATE" in l]
+        thin = any(e.get("label") == "thin_evidence" for e in d.jobs.get(j.id).events)
+        return d.jobs.get(j.id).status, gate, thin
+
+    rich = ("1) tests pass -- ran pytest -q, tail: 12 passed. "
+            "2) page renders -- ran curl localhost:3000, tail: 200 OK. "
+            "3) build clean -- ran npm run build, tail: compiled successfully. "
+            "changed: src/app.py:10-42, src/routes.py:7. "
+            "assumptions: none. risks: none.")
+    status, gate, thin = run_one("architect", "worker1", "done")          # thin: no shape at all
+    assert status == "DONE" and len(gate) == 1 and thin                   # completes, flags, tells lead
+    status, gate, thin = run_one("architect", "worker1", rich)            # rich checklist reply
+    assert status == "DONE" and not gate and not thin
+    status, gate, thin = run_one("architect", "planner", "the plan: do X then Y")
+    assert not gate and not thin                                          # planner exempt
+    status, gate, thin = run_one("standard", "worker1", "done")
+    assert not gate and not thin                                          # standard never gates
