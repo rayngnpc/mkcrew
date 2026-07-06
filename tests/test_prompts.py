@@ -224,20 +224,41 @@ def test_thorough_and_plan_first_mode_clauses():
 
 
 def test_architect_mode_clause():
-    """architect = flagship-as-judge. The clause must carry ALL five disciplines (hands-off,
-    contracts, cheap-verifier pyramid, batching, audits) plus the honesty additions (delegation
-    test, calibration, no mid-task counter-asks); 'standard' stays byte-identical (regression)."""
+    """architect v2 = flagship-as-architect: knowledge TRANSFER through blueprints, not just
+    judging. The clause must carry every research-backed discipline: hands-off, one-sentence
+    slices, definition of done, blueprints with decisions made + interfaces stated identically,
+    tier calibration, positive constraint economy, independent re-run verification, re-decompose
+    on failure, spot audits, final assembly check, batching, no mid-task counter-asks.
+    'standard' stays byte-identical (regression)."""
     from mkcrew import prompts
     base = prompts.lead_prompt("C:/x/mk.exe")
     arch = prompts.lead_prompt("C:/x/mk.exe", mode="architect")
     assert "ARCHITECT MODE" in arch and "\n" not in arch
-    for marker in ("Never read source files", "CONTRACT", "acceptance criteria",
-                   "DIFFERENT worker", "Spot-audit", "delegation test", "Calibrate",
-                   "never by asking you mid-task", "no new abstractions"):
+    for marker in ("Never read source files", "one sentence", "DEFINITION OF DONE",
+                   "BLUEPRINT", "architectural choice", "IDENTICALLY", "acceptance criteria",
+                   "phrased positively", "CALIBRATE", "DIFFERENT worker", "re-RUNS",
+                   "RE-DECOMPOSED", "Spot-audit", "assembly check",
+                   "never by asking you mid-task"):
         assert marker in arch, f"clause lost its '{marker}' discipline"
     assert "ARCHITECT MODE" not in base
     live = prompts.mode_update_prompt("architect")          # `mk mode architect` live switch
     assert "ARCHITECT MODE" in live and "\n" not in live
+
+
+def test_lead_roster_names_each_workers_model():
+    """Tier calibration needs tiers: the roster shows each worker's MODEL next to its CLI when
+    configured (small models get step-by-step blueprints, strong ones get goals -- the lead can
+    only route/calibrate if it knows who is which). Model-less agents render exactly as before."""
+    from mkcrew import prompts
+    team = [{"role": "main", "provider": "claude", "model": "claude-fable-5"},
+            {"role": "worker1", "provider": "claude", "model": "claude-haiku-4-5"},
+            {"role": "worker2", "provider": "codex", "model": "gpt-5.5"},
+            {"role": "worker3", "provider": "opencode"}]                    # no model set
+    p = prompts.lead_prompt("C:/x/mk.exe", team=team)
+    assert "worker1 (claude claude-haiku-4-5:" in p
+    assert "worker2 (codex gpt-5.5:" in p
+    assert "worker3 (opencode:" in p                       # blank model -> provider only (as before)
+    assert "\n" not in p
 
 
 def test_mode_update_prompt_live_switch_line():

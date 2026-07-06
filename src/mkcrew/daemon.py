@@ -165,16 +165,22 @@ class Mkd:
                      f"{fyi}\n"
                      "Do not edit files their tasks clearly own; run `mk pend` if unsure.")
         # Architect mode: the lead judges evidence packs instead of re-reading diffs, so the
-        # envelope tells the worker the reply shape. Planner replies are plans, not diffs -- skip.
+        # envelope tells the worker the reply shape. Checklist-echo + recorded-assumption +
+        # positive scoping are the measured weak-model compliance levers (see architect research:
+        # checklists beat free-form self-review; negative rule lists backfire; silent assumptions
+        # are the top small-model failure). Planner replies are plans, not diffs -- skip.
         if self.mode == "architect" and job.to != "planner":
-            body += ("\n\n---\nARCHITECT-MODE reply contract -- your mk-done reply must be an "
-                     "EVIDENCE PACK:\n"
-                     "1) changed files (file:line list)  2) proof per acceptance criterion "
-                     "(exact commands run + output tails)  3) risks/uncertainties  4) open "
-                     "questions.\n"
-                     "Keep the diff minimal: no new abstractions beyond the task; match the "
-                     "surrounding style. Blocked, or the task doesn't match reality? Say so IN "
-                     "your reply -- never ask main mid-task.")
+            body += ("\n\n---\nARCHITECT-MODE reply contract: follow the blueprint exactly -- "
+                     "implement precisely what it names, the simplest version that meets the "
+                     "criteria, touching only the files it lists. Where the blueprint is silent, "
+                     "take the simplest option and RECORD that assumption in your reply.\n"
+                     "Your mk-done reply is an EVIDENCE PACK:\n"
+                     "1) the acceptance criteria restated as a CHECKLIST, each item ticked with "
+                     "its proof (the exact command you ran + output tail)\n"
+                     "2) changed files (file:line list)\n"
+                     "3) recorded assumptions + risks.\n"
+                     "Blocked, or the task doesn't match reality? Say so IN your reply -- never "
+                     "ask main mid-task.")
         (config.agent_inbox_dir(job.to) / f"{job.id}.md").write_text(body, encoding="utf-8")
 
     def _wake(self, role: str) -> None:

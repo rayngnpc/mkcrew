@@ -30,24 +30,36 @@ _MODE_CLAUSE = {
     "plan-first": "PLAN-FIRST MODE: before your FIRST delegation, present the full task breakdown "
                   "(which teammate does what, in what order, which files each task owns) and WAIT "
                   "for the user's explicit OK. After approval, proceed without re-asking per task. ",
-    "architect": "ARCHITECT MODE: you are the expensive judge -- your value is decomposition, "
-                 "contracts, and verdicts, NOT keystrokes. Never read source files, write code, or "
-                 "run builds/tests yourself; delegate ALL hands-on work, including investigation. "
-                 "The delegation test: delegate work you can SPECIFY; keep only work you would "
-                 "have to DISCOVER mid-edit -- a rare exception you announce when you use it. "
-                 "Every ask is a CONTRACT: goal, constraints, non-goals, and acceptance criteria "
-                 "the worker must PROVE with evidence (exact commands + output tails, changed "
-                 "file:line list), plus form limits: minimal diff, no new abstractions, match the "
-                 "surrounding style. Route review through cheap eyes first: a DIFFERENT worker "
-                 "verifies each result against its criteria by RUNNING it (single-worker team: it "
-                 "self-verifies with commands; audit more). You arbitrate on the evidence packs "
-                 "and deep-dive only on conflict -- a worker pastes the specifics; you still never "
-                 "read the repo. Calibrate: make your first delegation a small representative "
-                 "task and set your delegation bar from what comes back. Spot-audit ~1 in 5 "
-                 "completed tasks: have the worker paste the FULL diff and review it properly. "
-                 "Plan in ONE opening turn, fire the asks, stay idle while workers run, judge in "
-                 "batches (mk pend) -- no narration or polling turns. Workers escalate inside "
-                 "their reply, never by asking you mid-task. ",
+    "architect": "ARCHITECT MODE: you are the flagship lead -- the crew's quality ceiling is YOUR "
+                 "intelligence transmitted through task briefs. A weaker model executing a "
+                 "complete blueprint performs a tier above itself, and most multi-agent failures "
+                 "are underspecified plans, so the brief is where your effort goes. Never read "
+                 "source files, write code, or run builds/tests yourself; delegate ALL hands-on "
+                 "work, including investigation. PLAN once, up front: decompose into slices each "
+                 "statable in one sentence with one verifiable outcome; parallelize only slices "
+                 "with non-overlapping files; define the deliverable's DEFINITION OF DONE as "
+                 "mechanically checkable facts (builds, runs, tests pass, every page/feature "
+                 "wired end to end). BLUEPRINT every ask, specific to THIS task: the exact "
+                 "files/functions/names to create or change; the approach with the key decisions "
+                 "already made by you -- a worker must never face an architectural choice; every "
+                 "shared interface (signatures, data shapes, routes) stated IDENTICALLY in each "
+                 "ask that touches it; a pasted skeleton or example when the pattern is fiddly; "
+                 "acceptance criteria each provable by an exact command; and only the 2-3 "
+                 "constraints this worker is actually likely to violate, phrased positively "
+                 "(touch only X, use only Y) -- long rule lists reduce compliance. CALIBRATE to "
+                 "tier (the roster names each worker's CLI and model): small/fast models get "
+                 "step-by-step blueprints and smaller slices; strong reasoning models get goal, "
+                 "interfaces, and criteria with freedom on the how. VERIFY through a DIFFERENT "
+                 "worker that re-RUNS the result against its criteria -- never accept the "
+                 "implementer's own pasted output as the only proof; you arbitrate on evidence. "
+                 "A failed slice gets RE-DECOMPOSED into smaller slices, not re-asked verbatim. "
+                 "Spot-audit ~1 in 5 completed tasks: the worker pastes the FULL diff and you "
+                 "review it properly. FINISH: nothing is done until the final assembly check -- "
+                 "one worker runs the WHOLE deliverable against the definition of done and "
+                 "pastes the outputs. Economy: plan in ONE opening turn, fire the asks, stay "
+                 "idle while workers run, judge in batches (mk pend). Hand-code only what you "
+                 "could not specify, and announce it. Workers escalate inside their reply, never "
+                 "by asking you mid-task. ",
 }
 
 
@@ -80,8 +92,14 @@ def lead_prompt(mk: str, team=None, mode: str = "standard", provider: str = "cla
     """
     mates = [a for a in (team or []) if a.get("role") != "main"]
     if mates:
+        # CLI + MODEL per teammate: the lead calibrates task-brief detail to each worker's tier
+        # (small/fast models need step-by-step blueprints, strong reasoners need goals -- measured
+        # both directions), which it can only do if the roster names the actual models.
+        def _cli(a):
+            prov, model = a.get("provider", "claude"), (a.get("model") or "").strip()
+            return f"{prov} {model}" if model else prov
         roster = "; ".join(
-            f'{a["role"]} ({a.get("provider", "claude")}: {_role_function(a["role"])})'
+            f'{a["role"]} ({_cli(a)}: {_role_function(a["role"])})'
             for a in mates
         )
         roster_clause = f"Your ONLY teammates are: {roster}. Delegate to them by their exact role name. "

@@ -1176,7 +1176,9 @@ def test_architect_envelope_carries_reply_contract(tmp_path, monkeypatch):
     w = (config.agent_inbox_dir("worker1") / f"{jw.id}.md").read_text(encoding="utf-8")
     p = (config.agent_inbox_dir("planner") / f"{jp.id}.md").read_text(encoding="utf-8")
     assert "EVIDENCE PACK" in w and "never ask main mid-task" in w
-    assert "no new abstractions" in w                             # form limits ride along
+    assert "CHECKLIST" in w                                       # checklist-echo (measured lever)
+    assert "RECORD that assumption" in w                          # silent-assumption killer
+    assert "touching only the files it lists" in w                # positive scoping, not "don't"
     assert "EVIDENCE PACK" not in p                               # planner exempt
 
 
