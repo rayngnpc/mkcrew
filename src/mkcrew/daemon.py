@@ -612,7 +612,33 @@ class Mkd:
             if injected:
                 # thorough/architect = patient watchdog: deep tasks stay quiet 3x longer before giveup
                 stall = POST_PICKUP_STALL_SECONDS * (3 if self.mode in ("thorough", "architect") else 1)
-                if self._now() - wd.get("progress_ts", self._now()) > stall:
+                quiet = self._now() - wd.get("progress_ts", self._now())
+                # LIVE INCIDENT (worker3 "DONE-OK"): an agent that finishes but only SAYS so in its
+                # transcript never runs mk-done -- the job rides DELIVERED until giveup while the
+                # real result strands in the pane (custom personas override the envelope's
+                # instruction). So the watchdog's FIRST action on a quiet pane is a direct typed
+                # reminder with the exact command -- a finished-idle agent runs it next turn
+                # (self-heals); a deep-working one is told to continue. Once per job; the typed
+                # line itself changes the pane and re-arms progress_ts once, granting one extra
+                # stall window to comply -- then the giveup below still guarantees termination.
+                if quiet > stall / 2 and not wd.get("mkdone_reminded"):
+                    wd["mkdone_reminded"] = True
+                    try:
+                        self.jobs.record_event(inflight.id, "mkdone_reminder")
+                    except Exception:
+                        pass
+                    try:
+                        self.mux.send_line(
+                            pane_id,
+                            f"[MKCREW] You still have an OPEN job: {inflight.id}. If you already "
+                            f"finished it, report NOW by running: mk-done {inflight.id} "
+                            f'"<one-paragraph result summary>" -- saying done in chat does not '
+                            f"count and the team stays blocked until you run it. If you are still "
+                            f"working, continue; this is only a reminder.")
+                    except Exception:
+                        pass
+                    continue
+                if quiet > stall:
                     self._giveup(inflight, "[stall_giveup] worker picked up the task but stopped making progress")
                 continue
 

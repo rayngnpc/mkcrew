@@ -367,10 +367,17 @@ def test_watchdog_gives_up_when_injected_worker_stalls(tmp_path, monkeypatch):
     assert d.jobs.get(job.id).status == "DELIVERED", "must not give up on the pickup tick"
     assert not ev.is_set()
 
-    # Advance well past the stall window with an unchanging pane -> stall give-up.
+    # Advance well past the stall window with an unchanging pane. NEW CONTRACT: the watchdog
+    # never gives up without first REMINDING the worker to run mk-done (the prose-done incident).
     clock[0] = POST_PICKUP_STALL_SECONDS + 5.0
     d._watchdog_tick()
+    assert d.jobs.get(job.id).status == "DELIVERED", "first quiet strike is the mk-done reminder"
+    assert any(f"mk-done {job.id}" in l for _p, l in mux.lines), "reminder must carry the command"
+    assert any(e.get("label") == "mkdone_reminder" for e in d.jobs.get(job.id).events)
 
+    # Still frozen after the reminder -> the give-up guarantee holds.
+    clock[0] += 5.0
+    d._watchdog_tick()
     j = d.jobs.get(job.id)
     assert j.status == "INCOMPLETE", f"stalled pickup must be given up, got {j.status}"
     assert "[stall_giveup]" in j.reply
@@ -445,7 +452,10 @@ def test_watchdog_stalled_codex_pickup_is_given_up(tmp_path, monkeypatch):
     assert d.jobs.get(job.id).status == "DELIVERED"
 
     clock[0] = POST_PICKUP_STALL_SECONDS + 5.0
-    d._watchdog_tick()
+    d._watchdog_tick()                       # strike 1 = mk-done reminder (never skip straight to giveup)
+    assert d.jobs.get(job.id).status == "DELIVERED"
+    clock[0] += 5.0
+    d._watchdog_tick()                       # still frozen after the reminder -> give up
 
     j = d.jobs.get(job.id)
     assert j.status == "INCOMPLETE"
@@ -1139,10 +1149,12 @@ def test_thorough_mode_widens_stall_patience(tmp_path, monkeypatch):
         d.jobs.record_event(job.id, "injected")                      # worker picked it up
         d._poll_once()                                               # arm the progress heartbeat
         clock[0] += dmod.POST_PICKUP_STALL_SECONDS + 60              # past 1x patience, under 3x
-        d._poll_once()
+        d._poll_once()                                               # standard: reminder strike
+        clock[0] += dmod.WATCHDOG_INTERVAL_SECONDS + 1
+        d._poll_once()                                               # standard: giveup strike
         results[mode] = d.jobs.get(job.id).status
-    assert results["standard"] in ("INCOMPLETE",), results           # standard gave up
-    assert results["thorough"] == "DELIVERED", results               # thorough is still patient
+    assert results["standard"] in ("INCOMPLETE",), results           # standard gave up (post-reminder)
+    assert results["thorough"] == "DELIVERED", results               # thorough is still patient (no strike yet)
 
 
 # --- deep-work ceiling + late results (the 40-min codex case) ---
@@ -1482,3 +1494,38 @@ def test_architect_evidence_gate_flags_thin_replies(tmp_path, monkeypatch):
     assert not gate and not thin                                          # planner exempt
     status, gate, thin = run_one("standard", "worker1", "done")
     assert not gate and not thin                                          # standard never gates
+
+
+def test_mkdone_reminder_self_heals_prose_done_worker(tmp_path, monkeypatch):
+    """LIVE INCIDENT (worker3 "DONE-OK"): an agent finishes but only SAYS done in its transcript,
+    never running mk-done -- the job rode DELIVERED to giveup while main sat blocked and the real
+    result stranded in the pane. The watchdog now types a reminder carrying the EXACT command at
+    half the stall window (once per job); a finished-idle agent runs it on its next turn and the
+    job completes with the REAL result."""
+    from mkcrew.daemon import POST_PICKUP_STALL_SECONDS
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    clock = [1000.0]
+    mux = FakeMux(); mux.capture = lambda pid: "DONE-OK  (prose sitting in the pane)"
+    d = Mkd(mux=mux); d._now = lambda: clock[0]
+    d.register_agent("worker3", pane_id="%5")
+    job = d.jobs.open(frm="main", to="worker3", text="research task")
+    d._deliver(job)
+    d.jobs.record_event(job.id, "injected")
+    d._last_wd = -999; d._poll_once()                        # seed the progress heartbeat
+    clock[0] += POST_PICKUP_STALL_SECONDS / 2 + 30           # quiet past the remind threshold
+    d._last_wd = -999; d._poll_once()
+    reminders = [l for _p, l in mux.lines if f"mk-done {job.id}" in l]
+    assert len(reminders) == 1 and "OPEN job" in reminders[0]
+    assert "saying done in chat does not count" in reminders[0]
+    assert d.jobs.get(job.id).status == "DELIVERED"          # reminded, NOT killed
+    assert any(e.get("label") == "mkdone_reminder" for e in d.jobs.get(job.id).events)
+    d._last_wd = -999; d._poll_once()                        # once per job -- no spam
+    assert len([l for _p, l in mux.lines if f"mk-done {job.id}" in l]) == 1
+    # the nudged agent now ACTUALLY runs mk-done -> artifact -> normal completion with the result
+    art = config.agent_finish_dir("worker3") / f"done-{job.id}-1.json"
+    art.write_text(json.dumps({"job_id": job.id, "actor": "worker3",
+                               "reply": "research summary: markets A and B look viable",
+                               "ts": time.time()}), encoding="utf-8")
+    d._last_wd = -999; d._poll_once()
+    assert d.jobs.get(job.id).status == "DONE"
+    assert d.jobs.get(job.id).reply.startswith("research summary")
