@@ -25,8 +25,9 @@ _MODE_CLAUSE = {
             "it, and ship directly without the plan->review->verify ceremony. ",
     "thorough": "THOROUGH MODE: correctness over speed. Every worker result must pass the review "
                 "gate before you accept it, and verify claims by RUNNING the result (build/tests/"
-                "the app) -- never accept a completion summary on faith. Workers may take long "
-                "turns; that is expected here. ",
+                "the app) -- never accept a completion summary on faith, and never accept a pass "
+                "obtained by weakening the check itself (a green run on a loosened assertion is a "
+                "failure, not a fix). Workers may take long turns; that is expected here. ",
     "plan-first": "PLAN-FIRST MODE: before your FIRST delegation, present the full task breakdown "
                   "(which teammate does what, in what order, which files each task owns) and WAIT "
                   "for the user's explicit OK. After approval, proceed without re-asking per task. ",
@@ -39,27 +40,29 @@ _MODE_CLAUSE = {
                  "statable in one sentence with one verifiable outcome; parallelize only slices "
                  "with non-overlapping files; define the deliverable's DEFINITION OF DONE as "
                  "mechanically checkable facts (builds, runs, tests pass, every feature wired "
-                 "end to end). BLUEPRINT every ask, specific to THIS task: the exact "
-                 "files/functions/names to create or change; the approach with the key decisions "
-                 "already made by you -- a worker must never face an architectural choice; every "
-                 "shared interface (signatures, data shapes, routes) stated IDENTICALLY in each "
-                 "ask that touches it; a pasted skeleton or example when the pattern is fiddly; "
-                 "acceptance criteria each provable by an exact command; and only the 2-3 "
-                 "constraints this worker is actually likely to violate, phrased positively "
-                 "(touch only X, use only Y) -- long rule lists reduce compliance. CALIBRATE to "
-                 "tier (the roster names each worker's CLI and model): small/fast models get "
-                 "step-by-step blueprints and smaller slices; strong reasoning models get goal, "
-                 "interfaces, and criteria with freedom on the how. VERIFY through a DIFFERENT "
-                 "worker that re-RUNS the result against its criteria -- never accept the "
-                 "implementer's own pasted output as the only proof; you arbitrate on evidence. "
-                 "A failed slice gets RE-DECOMPOSED into smaller slices, not re-asked verbatim. "
-                 "Spot-audit ~1 in 5 completed tasks: the worker pastes the FULL diff and you "
-                 "review it properly. FINISH: nothing is done until the final assembly check -- "
-                 "one worker runs the WHOLE deliverable against the definition of done and "
+                 "end to end). BLUEPRINT every ask, specific to THIS task -- the worker knows "
+                 "NOTHING you do not write down, so never reference ('as discussed', 'like the "
+                 "auth slice'), always explain: the exact files/functions/names to create or "
+                 "change; the approach with the key decisions already made by you -- a worker "
+                 "must never face an architectural choice; every shared interface (signatures, "
+                 "data shapes, routes) stated IDENTICALLY in each ask that touches it; a pasted "
+                 "skeleton or example when the pattern is fiddly; what you already RULED OUT and "
+                 "why, so no worker re-explores a dead end; acceptance criteria each provable by "
+                 "an exact command; and only the 2-3 constraints this worker is actually likely "
+                 "to violate, phrased positively (touch only X, use only Y) -- long rule lists "
+                 "reduce compliance. CALIBRATE to tier (the roster names each worker's CLI and "
+                 "model): small/fast models get step-by-step blueprints and smaller slices; "
+                 "strong reasoning models get goal, interfaces, and criteria with freedom on the "
+                 "how. Spot-audit ~1 in 5 completed tasks: the worker pastes the FULL diff and "
+                 "you review it properly. FINISH: nothing is done until the final assembly check "
+                 "-- one worker runs the WHOLE deliverable against the definition of done and "
                  "pastes the outputs. Economy: plan in ONE opening turn, fire the asks, stay "
                  "idle while workers run, judge in batches (mk pend). Hand-code only what you "
                  "could not specify, and announce it. Workers escalate inside their reply, never "
-                 "by asking you mid-task. ",
+                 "by asking you mid-task. Above all, VERIFY -- the rule most easily skipped "
+                 "under time pressure: a DIFFERENT worker re-RUNS every result against its "
+                 "criteria; never accept the implementer's own pasted output as the only proof; "
+                 "a failed slice gets RE-DECOMPOSED into smaller slices, not re-asked verbatim. ",
 }
 
 
@@ -70,6 +73,27 @@ def mode_update_prompt(mode: str) -> str:
         mode, "Return to the balanced default: delegate -> do -> review/verify as the task warrants. ")
     return (f"Core-mode update: the user switched your working posture to '{mode}'. {clause}"
             "Acknowledge in one short line and apply it from your next action onward.")
+
+
+# Per-provider HANDLING notes injected into the lead bootstrap for the CLIs actually on the crew:
+# operational facts about each provider's measured failure modes -- NOT vendor "magic phrasing",
+# which expires with every model generation (DeepSeek's own guidance reversed twice in 18 months).
+# codex is OFFICIAL (OpenAI's codex prompting guide: asking for narrated plans/status makes it stop
+# before finishing -- and its harness can end the turn on a status message before the promised
+# action, openai/codex#27352). gemini/opencode are convergent practitioner findings. claude needs
+# no note: the lead speaks its own dialect natively. One sentence each -- rule lists reduce
+# compliance, so these stay terse and operational.
+_PROVIDER_NOTES = {
+    "codex": "codex workers go STRAIGHT to work -- never ask codex to present a plan or post "
+             "status updates first (that reliably makes it stop before the work is done); give "
+             "it one focused objective per ask",
+    "antigravity": "antigravity/gemini workers need every constraint and expectation stated "
+                   "explicitly in the ask (gemini under-infers unstated rules) and a reply-length "
+                   "cap or they run long",
+    "opencode": "opencode workers vary by model route and may run custom personas that fight the "
+                "crew protocol -- restate the goal AFTER any pasted context block and restate "
+                "the mk-done requirement inside the ask itself",
+}
 
 
 def lead_prompt(mk: str, team=None, mode: str = "standard", provider: str = "claude",
@@ -103,6 +127,13 @@ def lead_prompt(mk: str, team=None, mode: str = "standard", provider: str = "cla
             for a in mates
         )
         roster_clause = f"Your ONLY teammates are: {roster}. Delegate to them by their exact role name. "
+        # Handling notes only for the provider families actually PRESENT (deduped, roster order):
+        # an all-claude crew gets nothing -- bootstrap byte-identical to before.
+        notes = "; ".join(_PROVIDER_NOTES[p] for p in
+                          dict.fromkeys(a.get("provider", "claude") for a in mates)
+                          if p in _PROVIDER_NOTES)
+        if notes:
+            roster_clause += f"CREW HANDLING: {notes}. "
     else:
         roster_clause = (
             "Delegate to your workers (worker1, worker2, ...) for implementation, reviewer for "

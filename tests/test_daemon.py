@@ -1191,6 +1191,10 @@ def test_architect_envelope_carries_reply_contract(tmp_path, monkeypatch):
     assert "CHECKLIST" in w                                       # checklist-echo (measured lever)
     assert "RECORD that assumption" in w                          # silent-assumption killer
     assert "touching only the files it lists" in w                # positive scoping, not "don't"
+    assert "fix the code, not the check" in w                     # anti-verification-gaming
+    assert "self-audit" in w                                      # pre-completion audit (Devin/Cline)
+    assert "no TODOs or placeholder stubs" in w                   # completeness mandate (MetaGPT)
+    assert "fails 3 times" in w                                   # retry ceiling + pivot (Devin/OpenHands)
     assert "EVIDENCE PACK" not in p                               # planner exempt
 
 

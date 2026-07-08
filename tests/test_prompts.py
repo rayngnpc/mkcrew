@@ -218,6 +218,7 @@ def test_thorough_and_plan_first_mode_clauses():
     assert prompts.lead_prompt("C:/x/mk.exe", mode="standard") == base    # untouched default
     thorough = prompts.lead_prompt("C:/x/mk.exe", mode="thorough")
     assert "THOROUGH MODE" in thorough and "review gate" in thorough
+    assert "loosened assertion" in thorough        # anti-verification-gaming (Devin + SWE-agent)
     plan = prompts.lead_prompt("C:/x/mk.exe", mode="plan-first")
     assert "PLAN-FIRST MODE" in plan and "WAIT" in plan
     assert "THOROUGH MODE" not in base and "PLAN-FIRST MODE" not in base
@@ -238,11 +239,36 @@ def test_architect_mode_clause():
                    "BLUEPRINT", "architectural choice", "IDENTICALLY", "acceptance criteria",
                    "phrased positively", "CALIBRATE", "DIFFERENT worker", "re-RUNS",
                    "RE-DECOMPOSED", "Spot-audit", "assembly check",
-                   "never by asking you mid-task"):
+                   "never by asking you mid-task",
+                   "knows NOTHING",                          # zero-shared-context maxim (crewAI)
+                   "RULED OUT"):                             # dead-end field (context-handoff)
         assert marker in arch, f"clause lost its '{marker}' discipline"
+    # Recency pinning: the verification mandate is the CLOSING beat of the clause (mid-paragraph
+    # is the attention slot models skip under pressure), after the finish/economy sections.
+    assert arch.index("assembly check") < arch.index("re-RUNS")
+    assert arch.index("mk pend") < arch.index("re-RUNS")
     assert "ARCHITECT MODE" not in base
     live = prompts.mode_update_prompt("architect")          # `mk mode architect` live switch
     assert "ARCHITECT MODE" in live and "\n" not in live
+
+
+def test_lead_crew_handling_notes_per_provider_present():
+    """Provider handling notes appear ONLY for the CLI families actually on the crew (deduped),
+    and an all-claude crew's bootstrap is byte-identical to before (no-damage guarantee)."""
+    from mkcrew import prompts
+    mixed = [{"role": "main", "provider": "claude"},
+             {"role": "worker1", "provider": "codex"},
+             {"role": "worker2", "provider": "codex"},          # duplicate provider -> ONE note
+             {"role": "worker3", "provider": "opencode"}]
+    p = prompts.lead_prompt("C:/x/mk.exe", team=mixed)
+    assert "CREW HANDLING:" in p and "\n" not in p
+    assert p.count("STRAIGHT to work") == 1                     # codex note, deduped
+    assert "mk-done requirement inside the ask" in p            # opencode note
+    assert "gemini" not in p                                    # antigravity NOT on this crew
+    claude_only = [{"role": "main", "provider": "claude"},
+                   {"role": "worker1", "provider": "claude"}]
+    q = prompts.lead_prompt("C:/x/mk.exe", team=claude_only)
+    assert "CREW HANDLING" not in q                             # all-claude crew: nothing injected
 
 
 def test_lead_roster_names_each_workers_model():
