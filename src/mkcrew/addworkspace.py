@@ -32,7 +32,7 @@ _PROVIDER_OPTIONS = [
     ("antigravity", "Antigravity", "Google Antigravity CLI (agy)"),
 ]
 _PROVIDERS = [key for key, _label, _desc in _PROVIDER_OPTIONS]
-_COUNTS = ["1", "2", "3", "4"]                                          # capped at 4 (layouts fit <=4 well)
+_COUNTS = ["1", "2", "3", "4", "5", "6"]                                # pages grids <=6/window; single-window layouts best <=4
 _EFFORTS = ["low", "medium", "high", "max"]            # generic fallback thinking levels (per-model lists win)
 # The Layout step groups the FROZEN templates registry (single source of truth) into two headed radio
 # groups: "Normal" (add-capable core layouts) and "Experimental" (the files-IDE layout).  The selected

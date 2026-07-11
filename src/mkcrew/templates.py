@@ -28,7 +28,9 @@ class Template:
     desc: str
     add_capable: bool = True   # offered by `mk add` (the wizard). pages/dashboard are mk-start/Studio only.
     min_agents: int = 1
-    max_agents: int = 4      # hard cap everywhere (studio 2-4, wizard 1-4, mk add <=4): layouts fit <=4 agents
+    max_agents: int = 4      # per-template fit ceiling: single-window layouts stay readable to ~4 agents;
+                             # paged layouts (pages) raise this. Pickers allow up to 6 -- the fit-sort
+                             # steers oversize teams toward the templates whose range actually holds them.
 
     def to_dict(self):
         return asdict(self)
@@ -42,9 +44,11 @@ TEMPLATES = [
              "Agents in side-by-side columns with a core status strip."),
     Template("lead-left-ide", "LEAD LEFT + Files IDE", EXPERIMENTAL, True,
              "LEAD LEFT plus the files IDE pane (core | explorer | editor). Experimental."),
-    # At mk-add scale (<=4 agents) a pages workspace is ONE page: agent grid + core strip in its tab.
+    # pages scales: the builder grids up to 6 agents per window (_PER_PAGE) + a core strip per tab,
+    # so it's the template that actually FITS a 5-6 agent team; <=6 agents stays a single page.
     Template("pages", "Pages", NORMAL, False,
-             "Agents across paged grid windows, each with a core strip."),
+             "Agents across paged grid windows, each with a core strip.",
+             max_agents=6),
 ]
 
 _BY_KEY = {t.key: t for t in TEMPLATES}

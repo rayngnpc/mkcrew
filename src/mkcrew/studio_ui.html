@@ -182,6 +182,9 @@
     linear-gradient(var(--am5),var(--am5)) bottom left/10px 1.5px no-repeat,
     linear-gradient(var(--am5),var(--am5)) bottom left/1.5px 10px no-repeat}
   .mode .ic{width:32px;height:32px;display:grid;place-items:center;background:var(--cy08);border:1px solid var(--cy3);color:var(--cy);clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px))}.mode .ic .i{width:18px;height:18px}.mode.sel .ic{color:var(--am);background:var(--am08);border-color:var(--am3);box-shadow:0 0 10px var(--am2)}.mode b{display:block;margin:11px 0 4px;font-size:16px;font-family:var(--head);text-transform:uppercase;letter-spacing:.07em;color:var(--text);font-weight:700}.mode.sel b{color:var(--am)}.mode p{color:var(--dim);font-size:11.5px;line-height:1.45;font-family:var(--mn)}
+  .mode .when{margin-top:8px;padding-top:7px;border-top:1px dashed var(--cy15);color:var(--dim);font-size:11px;line-height:1.4;font-family:var(--mn)}
+  .mode .when span{display:block;color:var(--cy);font-family:var(--head);font-size:9.5px;text-transform:uppercase;letter-spacing:.14em;margin-bottom:2px}
+  .mode.sel .when span{color:var(--am)}
 
   .side h3{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--cy);margin:0 0 11px;font-family:var(--head);font-weight:700;border-bottom:1px solid var(--cy15);padding-bottom:6px;display:flex;align-items:center;gap:9px}
   .prof{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:0;cursor:pointer;border:1px solid transparent;transition:.16s}
@@ -382,7 +385,7 @@
       <div id="em-err" style="color:#e87;font-size:12px;min-height:17px;margin-top:4px"></div>
     </div>
     <div class="mfoot">
-      <span class="lyt" style="font-size:11px;color:var(--faint)">saved to %LOCALAPPDATA%\mkcrew\models.json</span>
+      <span class="lyt" style="font-size:11px;color:var(--faint)">saved to $XDG_STATE_HOME/mkcrew/models.json</span>
       <span>
         <button class="ghost" onclick="resetModelsEditor()" title="Discard customisations, use the built-in defaults">Reset to defaults</button>
         <button class="ghost" onclick="closeModelsEditor()">Cancel</button>
@@ -498,6 +501,9 @@ const MODE_ICONS = {
   thorough: `<svg class="i" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>`,
   'plan-first': `<svg class="i" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6"/><path d="M9 16h6"/></svg>`,
   architect: `<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>`,
+  warroom:   `<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>`,
+  chief:     `<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><path d="m3 21 8.02-14.26"/><path d="m12.99 6.74 1.93 3.44"/><path d="M19.14 12a10 10 0 0 1-14.28 0"/><path d="m21 21-2.16-3.84"/></svg>`,
+  venture:   `<svg class="i" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><path d="M2 13h20"/><path d="M12 11v4"/></svg>`,
 };
 
 const PROFILE_ICON = `<svg class="i" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
@@ -523,6 +529,7 @@ let STATE = {
   efforts: [],         // per-agent thinking/reasoning level ('' = default; only claude/codex)
   providerModels: {},  // provider -> [model suggestions]  (from /api/clis)
   providerThinking: {},// provider -> [thinking levels]    (from /api/clis; absent = no toggle)
+  accounts: [],        // [{label, provider, bin}] account wrappers (from /api/clis) -> extra dropdown options
   agents: [],          // from /api/config
   templates: [],       // from /api/templates
   modes: [],           // from /api/modes
@@ -622,7 +629,8 @@ function renderModes(modes) {
     el.dataset.key = m.key;
     el.onclick = () => selectMode(m.key);
     const icon = MODE_ICONS[m.key] || MODE_ICONS.standard;
-    el.innerHTML = `<div class="ic">${icon}</div><b>${m.name}</b><p>${m.desc}</p>`;
+    el.innerHTML = `<div class="ic">${icon}</div><b>${m.name}</b><p>${m.desc}</p>` +
+                   (m.when ? `<p class="when"><span>use when</span>${m.when}</p>` : '');
     grid.appendChild(el);
   });
   if (modes.length > 0) STATE.mode = modes[0].key;
@@ -633,10 +641,24 @@ function selectMode(key) {
   document.querySelectorAll('#modes-grid .mode').forEach(el => {
     el.classList.toggle('sel', el.dataset.key === key);
   });
+  renderTeam();      // chief/warroom re-seat the last chip as the planner -- reflect it live
   updateCmdPreview();
 }
 
 // ── render: team stepper + roster ────────────────────────────────────────────
+// Mirror of teamconfig.build_team's seating (the server is the source of truth at save): roles come
+// from the priority roster, and the planner-centric modes (chief/warroom) guarantee a planner seat --
+// when the count-slice lacks one (count < 5), the LAST seat becomes the planner (count >= 3 keeps a
+// worker). Labels must show what SAVE will produce, so every row label derives from this, not from a
+// previously-saved role.
+const ROLE_PRIORITY = ['main','worker1','worker2','worker3','planner','worker4','worker5','worker6'];
+function roleFor(i) {
+  const roles = ROLE_PRIORITY.slice(0, STATE.count);
+  if (['chief','warroom','venture'].includes(STATE.mode) && STATE.count >= 3 && !roles.includes('planner'))
+    roles[roles.length - 1] = 'planner';
+  return roles[i] || 'agent' + i;
+}
+
 function renderTeam() {
   document.getElementById('count-val').textContent = STATE.count;
   const others = STATE.count - 1;
@@ -646,9 +668,9 @@ function renderTeam() {
   const roster = document.getElementById('roster');
   roster.innerHTML = '';
   for (let i = 0; i < STATE.count; i++) {
-    const agent = STATE.agents[i] || {role: i===0?'main':'opus'+(i), provider:'claude'};
-    const role  = agent.role || (i===0?'main':'agent'+i);
-    const prov  = STATE.providers[i] || agent.command || agent.provider || 'claude';
+    const agent = STATE.agents[i] || {provider:'claude'};
+    const role  = roleFor(i);
+    const prov  = STATE.providers[i] || agent.command || (agent.bin ? agent.provider+'·'+agent.bin.split('/').pop() : agent.provider) || 'claude';
     const chip  = document.createElement('div');
     chip.className = 'chip';
     chip.innerHTML = `<span class="av ${avClass(role)}"></span>${role}<span class="prov">${prov}</span>`;
@@ -764,6 +786,7 @@ async function openModal(key) {
     STATE.clis = c.clis || STATE.clis;
     STATE.providerModels = c.models || STATE.providerModels;
     STATE.providerThinking = c.thinking || STATE.providerThinking;
+    STATE.accounts = c.accounts || STATE.accounts;
     renderClis(STATE.clis);
   } catch (e) {}
   selectTemplate(key);
@@ -776,24 +799,32 @@ async function openModal(key) {
   document.getElementById('m-cap').textContent   = tpl.desc || ('Layout: ' + (tpl.name||key));
   document.getElementById('m-foot').textContent  = 'Layout: ' + (tpl.name||key) + ' · ' + STATE.count + ' agents';
 
-  const available = Object.entries(STATE.clis).filter(([,on]) => on).map(([name]) => name);
-  if (!available.length) available.push('claude'); // fallback
+  const providerNames = Object.entries(STATE.clis).filter(([,on]) => on).map(([name]) => name);
+  if (!providerNames.length) providerNames.push('claude'); // fallback
+  // Dropdown = detected built-in providers, then account wrappers (accounts.json) as `provider@bin`
+  // options with a friendly label. build_team parses `provider@bin` back to provider + bin, keeping the
+  // provider's hook/delivery while running that account's wrapper.
+  const provOptList = providerNames.map(p => ({value: p, label: p}))
+        .concat((STATE.accounts||[]).map(a => ({value: a.provider + '@' + a.bin, label: a.label})));
+  const optValues = provOptList.map(o => o.value);
+  const provOf = (v) => (v && v.indexOf('@') > 0 && !v.startsWith('/')) ? v.split('@')[0] : v;  // provider@bin -> provider
 
   const agentsEl = document.getElementById('m-agents');
   agentsEl.innerHTML = '';
   for (let i = 0; i < STATE.count; i++) {
     const agent = STATE.agents[i] || {role: i===0?'main':'agent'+i, provider:'claude'};
-    const role  = agent.role || (i===0?'main':'agent'+i);
-    const curProv  = STATE.providers[i] || agent.command || agent.provider || available[0];
+    const role  = roleFor(i);           // mode-aware seating (chief/warroom put the planner in the last seat)
+    const curProv  = STATE.providers[i] || agent.command || (agent.bin ? agent.provider+'@'+agent.bin : agent.provider) || providerNames[0];
+    const baseProv = provOf(curProv);   // underlying provider -> drives the model / thinking dropdowns
     let   curModel = STATE.models[i]  != null ? STATE.models[i]  : (agent.model  || '');
-    if (curProv !== 'claude' && String(curModel).startsWith('claude-')) curModel = '';  // stale roster default -> show the dropdown, not custom
+    if (baseProv !== 'claude' && String(curModel).startsWith('claude-')) curModel = '';  // stale roster default -> show the dropdown, not custom
     const curEff   = STATE.efforts[i] != null ? STATE.efforts[i] : (agent.effort || '');
-    const roleDesc = i===0 ? 'lead' : (role.includes('rev') ? 'review gate' : 'worker');
-    // A provider string that isn't a known CLI is a CUSTOM launch command (build_team runs it
-    // verbatim). Without this the select showed its FIRST option ("claude") while STATE kept the
-    // command -> the UI looked like claude but every save round-tripped custom (live incident).
-    const isCustomProv = !!curProv && curProv !== 'custom' && !available.includes(curProv);
-    const provOpts = available.map(p => `<option value="${p}" ${p===curProv?'selected':''}>${p}</option>`).join('')
+    const roleDesc = i===0 ? 'lead' : (role.includes('rev') ? 'review gate'
+                     : role.includes('plan') ? 'read-only planner' : 'worker');
+    // A provider string not in the option list (and not 'custom') is a raw CUSTOM launch command
+    // (build_team runs it verbatim) -> show it in the editable box, not as a phantom dropdown pick.
+    const isCustomProv = !!curProv && curProv !== 'custom' && !optValues.includes(curProv);
+    const provOpts = provOptList.map(o => `<option value="${_esc(o.value)}" ${o.value===curProv?'selected':''}>${_esc(o.label)}</option>`).join('')
                    + `<option value="custom" ${(isCustomProv||curProv==='custom')?'selected':''}>custom…</option>`;
     const row = document.createElement('div');
     row.className = 'arow';
@@ -801,10 +832,10 @@ async function openModal(key) {
       `<span class="av ${avClass(role)}"></span>` +
       `<div class="who"><b>${role}</b><small>${roleDesc}</small></div>` +
       `<select class="m-prov" data-idx="${i}">${provOpts}</select>` +
-      `<input class="m-prov-x" placeholder="launch command (runs verbatim)" ` +
+      `<input class="m-prov-x" placeholder="launch command, or provider@/path/to/wrapper (e.g. claude@/home/you/bin/claudew)" ` +
       `value="${isCustomProv?_esc(curProv):''}" ${isCustomProv?'':'hidden'}>` +
-      `<span class="m-modelcell" data-idx="${i}">${_modelCell(i, isCustomProv?'custom':curProv, curModel)}</span>` +
-      _thinkControl(i, isCustomProv?'custom':curProv, curEff);
+      `<span class="m-modelcell" data-idx="${i}">${_modelCell(i, isCustomProv?'custom':baseProv, curModel)}</span>` +
+      _thinkControl(i, isCustomProv?'custom':baseProv, curEff);
     agentsEl.appendChild(row);
     _bindModelCell(row.querySelector('.m-modelcell'));
     // provider change -> rebuild that row's model dropdown + thinking control for the new CLI
@@ -812,10 +843,11 @@ async function openModal(key) {
       const p = e.target.value;
       const x = row.querySelector('.m-prov-x');
       if (p === 'custom') { x.hidden = false; x.focus(); } else { x.hidden = true; }
+      const mp = p === 'custom' ? 'custom' : provOf(p);   // model/thinking follow the underlying provider
       const cell = row.querySelector('.m-modelcell');
-      cell.innerHTML = _modelCell(i, p, '');
+      cell.innerHTML = _modelCell(i, mp, '');
       _bindModelCell(cell);
-      (row.querySelector('.m-think') || row.querySelector('.m-nothink')).outerHTML = _thinkControl(i, p, '');
+      (row.querySelector('.m-think') || row.querySelector('.m-nothink')).outerHTML = _thinkControl(i, mp, '');
     };
   }
   document.getElementById('scrim').classList.add('show');
@@ -872,7 +904,7 @@ async function saveModelsEditor() {
 // ── stepper ──────────────────────────────────────────────────────────────────
 function _stepCount(d) {
   const n = STATE.count + d;
-  if (n < 2 || n > 4) return;   // 2-4 agents: 1 agent = no teammate to delegate to
+  if (n < 2 || n > 6) return;   // 2-6 agents: 1 agent = no teammate to delegate to; >6 outgrows every layout
   STATE.count = n;
   renderTeam();
   const best = renderTemplates(STATE.templates);   // re-sort for the new size...
@@ -1005,11 +1037,12 @@ async function boot() {
     STATE.clis            = clisResp.clis;
     STATE.providerModels  = clisResp.models   || {};
     STATE.providerThinking= clisResp.thinking || {};
+    STATE.accounts        = clisResp.accounts || [];
     STATE.templates = templates;
     STATE.modes     = modes;
     STATE.agents    = cfg.agents    || [];
     STATE.layout    = cfg.layout    || 'hub';
-    STATE.count     = Math.max(2, Math.min(STATE.agents.length || 4, 4));   // clamp 2-4
+    STATE.count     = Math.max(2, Math.min(STATE.agents.length || 4, 6));   // clamp 2-6
     STATE.providers = STATE.agents.map(a => a.command || a.provider || 'claude');
     STATE.models    = STATE.agents.map(a => a.model  || '');
     STATE.efforts   = STATE.agents.map(a => a.effort || '');

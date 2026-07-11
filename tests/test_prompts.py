@@ -295,3 +295,125 @@ def test_mode_update_prompt_live_switch_line():
     assert "\n" not in up and "'thorough'" in up and "THOROUGH MODE" in up
     back = prompts.mode_update_prompt("standard")
     assert "balanced default" in back
+
+
+def test_warroom_mode_clause():
+    """warroom = multi-CLI plan panel: the planner DRAFTS, every other teammate ATTACKS (adversarial,
+    capped, one round -- additive review bloats plans), the lead SYNTHESIZES one final plan holding
+    the pen, and the user GATES before any implementation. Single-line (send_line delivery)."""
+    from mkcrew import prompts
+    war = prompts.lead_prompt("/x/mk", mode="warroom")
+    assert "\n" not in war                                        # single-line invariant
+    assert "WARROOM MODE" in war
+    for step in ("DRAFT", "ATTACK", "SYNTHESIZE", "GATE"):        # the 4-step relay, in order
+        assert step in war
+    assert war.index("DRAFT") < war.index("ATTACK") < war.index("SYNTHESIZE") < war.index("GATE")
+    assert "attack the plan, do not extend it" in war             # adversarial, not additive
+    assert "AT MOST 5 objections" in war                          # capped critique
+    assert "you hold the pen" in war                              # one synthesizer
+    assert "WAIT for explicit OK" in war                          # user gate before implementation
+    assert "draft it yourself" in war                             # no-planner fallback
+    assert "one round each" in war                                # no critique loops
+    live = prompts.mode_update_prompt("warroom")                  # `mk mode warroom` live switch
+    assert "\n" not in live and "WARROOM MODE" in live
+
+
+def test_chief_mode_clause():
+    """chief = architect with a drafting office: the lead DECIDES (decision-complete directives --
+    the planner decides NOTHING), the planner ELABORATES the blueprint, the lead CHECKS the draft
+    mechanically against its own decisions (anchoring guard: 'length is not quality'), and EXECUTES
+    with architect discipline. Single-line (send_line delivery)."""
+    from mkcrew import prompts
+    chief = prompts.lead_prompt("/x/mk", mode="chief")
+    assert "\n" not in chief                                       # single-line invariant
+    assert "CHIEF-ARCHITECT MODE" in chief
+    # Step markers in relay order (the intro sentence "you DECIDE, the planner ELABORATES, workers
+    # EXECUTE" front-runs the bare words, so anchor on the step-opening phrases).
+    steps = ("DECIDE: plan the deliverable", "ELABORATE: send each directive",
+             "CHECK each draft", "EXECUTE with architect")
+    for s in steps:
+        assert s in chief, s
+    assert chief.index(steps[0]) < chief.index(steps[1]) < chief.index(steps[2]) < chief.index(steps[3])
+    assert "the planner decides NOTHING" in chief                  # decision-drift guard
+    assert "length is not quality" in chief                        # detail-masquerade guard
+    assert "never forward a draft unreviewed" in chief             # lead owns the blueprint
+    assert "write the blueprints yourself" in chief                # no-planner fallback (= plain architect)
+    assert "DIFFERENT worker re-RUNS" in chief                     # architect execution rigor retained
+    assert "RE-DECOMPOSED" in chief
+    live = prompts.mode_update_prompt("chief")                     # `mk mode chief` live switch
+    assert "\n" not in live and "CHIEF-ARCHITECT MODE" in live
+
+
+def test_venture_mode_clause():
+    """venture = business inception (BMAD-inspired, elicitation INVERTED): intake ingests provided
+    material, the planner drafts a claim-labeled brief (no invented numbers), at most 5 derived
+    questions, research routed to the cheapest research-capable seat (never the lead), one red-team
+    pass, one decision gate with a falsification plan, evidence-preserving handoff -- and it never
+    implements. Single-line (send_line delivery)."""
+    from mkcrew import prompts
+    v = prompts.lead_prompt("/x/mk", mode="venture")
+    assert "\n" not in v                                          # single-line invariant
+    assert "VENTURE MODE" in v
+    steps = ("INTAKE: read everything", "DRAFT: send the planner", "ASK ONCE: derive",
+             "VERIFY: route fact-checking", "RED-TEAM: a DIFFERENT worker",
+             "GATE: present ONE decision review", "HANDOFF: write the approved brief")
+    for s in steps:
+        assert s in v, s
+    idx = [v.index(s) for s in steps]
+    assert idx == sorted(idx)                                     # pipeline order preserved
+    assert "FACT (with source), HYPOTHESIS (with confidence), or UNKNOWN" in v   # claim labeling
+    assert "never invent statistics" in v                         # no-invented-numbers rule
+    assert "at most 5 questions" in v and "at most 3 in total" in v   # capped ask + follow-ups
+    assert "never ask what the provided material already answers" in v  # input reduces questions
+    assert "LOWEST-COST worker with live web search" in v         # token-conservation routing
+    assert "claims stay UNVERIFIED" in v                          # no-research-capable-crew fallback
+    assert "resolve a material source conflict by inference" in v # inference ban on conflicts
+    assert "KILL the hypothesis" in v                             # falsification tests carry kill conditions
+    assert "CRITICAL unknowns named as such" in v                 # informed consent, not a hard blocker
+    assert "NEVER hand off unapproved" in v                       # approval-withheld behavior
+    assert "never research yourself" in v                         # the lead never researches
+    assert "never desirability" in v                              # desk-research boundary
+    assert "FALSIFICATION PLAN" in v and "WAIT for explicit approval" in v
+    assert "ONE re-draft" in v                                    # fork-correction loop, bounded
+    assert "draft it yourself" in v                               # no-planner fallback
+    assert "venture never implements" in v                        # hard mode boundary
+    live = prompts.mode_update_prompt("venture")                  # `mk mode venture` live switch
+    assert "\n" not in live and "VENTURE MODE" in live
+
+
+def test_thorough_mode_adds_independent_rerun_and_escalation():
+    """thorough borrows architect's two strongest verification levers: the verifying re-run goes
+    to a DIFFERENT agent (kills self-verification bias -- the implementer's own pasted output is
+    never the only proof), and a twice-failed result is RE-DECOMPOSED for a different worker
+    instead of re-asked verbatim (the known retry anti-pattern)."""
+    from mkcrew import prompts
+    thorough = prompts.lead_prompt("/x/mk", mode="thorough")
+    assert "DIFFERENT agent" in thorough
+    assert "implementer's own pasted output" in thorough
+    assert "RE-DECOMPOSED" in thorough and "never re-asked verbatim" in thorough
+
+
+def test_enforcement_series_clause_upgrades():
+    """The enforcement series, clause side: VERIFY: marker + per-slice ledger + two-strike tier
+    escalation + worked-example rule + qualitative-review routing + first-class BLOCKED in
+    architect/chief; the CHECKED stamp in chief; the VERIFY: marker in thorough; fast sanity-checks
+    instead of blind-accepting. All still single-line."""
+    from mkcrew import prompts
+    arch  = prompts.lead_prompt("/x/mk", mode="architect")
+    chief = prompts.lead_prompt("/x/mk", mode="chief")
+    thor  = prompts.lead_prompt("/x/mk", mode="thorough")
+    fast  = prompts.lead_prompt("/x/mk", mode="fast")
+    for lead in (arch, chief):
+        assert "STARTS with the word VERIFY:" in lead                 # audited marker
+        assert "BUILT by X, VERIFIED by Y" in lead                    # per-slice ledger
+        assert "TWICE moves UP to the strongest worker" in lead       # two-strike escalation
+        assert "WORKED EXAMPLE" in lead                               # mimicry rule for small models
+        assert "STRONGEST non-lead seat" in lead                      # qualitative-review routing
+        assert "BLOCKED reply is a first-class move" in lead
+        assert "stands alone even if its session reset" in lead      # codex fold: self-contained re-ask
+    assert "CHECKED: <your ruling>" in chief and "daemon audits the stamp" in chief
+    assert "starting the ask with the word VERIFY:" in thor
+    assert "BLOCKED reply is a first-class move" in thor
+    assert "sanity-check the reply" in fast
+    for lead in (arch, chief, thor, fast):
+        assert "\n" not in lead

@@ -128,3 +128,27 @@ def test_ensure_mints_id_regardless_of_provider(tmp_path):
     sid, new1 = sessions.ensure(tmp_path, "main")
     sid2, new2 = sessions.ensure(tmp_path, "main")
     assert new1 is True and new2 is False and sid == sid2
+
+
+def test_is_resumable_checks_account_wrapper_config_dir(tmp_path, monkeypatch):
+    """Per-account resume (Windows flavor): a claude launched via an account wrapper (.cmd setting
+    CLAUDE_CONFIG_DIR) stores its transcripts under THAT dir -- is_resumable must stat there, not
+    ~/.claude, or a session saved under one account is wrongly --resumed under another and the pane
+    crash-loops ('No conversation found')."""
+    import re as _re
+    from mkcrew import sessions
+    proj = tmp_path / "proj"; proj.mkdir()
+    work_dir = tmp_path / "claude-work"
+    wrapper = tmp_path / "claudew.cmd"
+    wrapper.write_text('@echo off\r\nsetlocal\r\nset "CLAUDE_CONFIG_DIR='
+                       + str(work_dir) + '"\r\nclaude %*\r\n', encoding="utf-8")
+    assert sessions._claude_config_dir(str(wrapper)) == work_dir      # grep + expandvars works on .cmd
+    assert sessions._claude_config_dir(None) == (sessions.Path.home() / ".claude")
+    sid = "11111111-2222-3333-4444-555555555555"
+    enc = _re.sub(r"[:\\/]", "-", str(proj))
+    # transcript exists ONLY under the wrapper's dir -> resumable with bin, NOT bare
+    tdir = work_dir / "projects" / enc; tdir.mkdir(parents=True)
+    (tdir / f"{sid}.jsonl").write_text("{}", encoding="utf-8")
+    assert sessions.is_resumable(proj, sid, "claude", bin=str(wrapper)) is True
+    monkeypatch.setattr(sessions.Path, "home", staticmethod(lambda: tmp_path / "nohome"))
+    assert sessions.is_resumable(proj, sid, "claude") is False        # bare claude: different dir

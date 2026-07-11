@@ -50,8 +50,9 @@ class Mkd:
         self.panes: dict[str, str] = {}
         self.providers: dict[str, str] = {}   # role -> provider (set at /register); delivery is provider-aware
         self.poll_interval = poll_interval
-        # Core-mode posture (standard/fast/thorough/plan-first/architect). thorough+architect widen watchdog patience
-        # (deep work legitimately takes long, quiet turns); everything else keeps the defaults.
+        # Core-mode posture (standard/fast/thorough/plan-first/architect/warroom/chief/venture).
+        # thorough+architect+warroom+chief+venture widen watchdog patience (deep work, plan drafting
+        # and desk research legitimately take long, quiet turns); everything else keeps the defaults.
         self.mode = mode
         self._events: dict[str, threading.Event] = {}
         self._stop = threading.Event()
@@ -79,6 +80,12 @@ class Mkd:
         self._jobs_completed: int = 0
         self._team_start: float | None = None   # set on first _deliver()
         self._consecutive_failures: int = 0
+        # Lead-side enforcement state (VERIFY gate + CHECK gate -- see _dispatch_audit/_verify_audit).
+        # Prompted procedure alone measures ~70-90% compliance (the _evidence_gate lesson, now applied
+        # to the LEAD): these tripwires watch the job graph so skipped verification/review is visible.
+        self._unverified_done: int = 0        # completed build jobs since the last VERIFY: ask
+        self._verify_nudged: bool = False     # one nudge per unverified streak, no spam
+        self._draft_pending_check: bool = False  # chief: planner draft completed; next dispatch needs CHECKED
 
     def _rehydrate(self) -> None:
         """Startup replay of the persistent event log (restart-proofing). A job whose latest
@@ -164,13 +171,16 @@ class Mkd:
             body += ("\n\n---\nFYI: teammates are working in this SAME checkout right now:\n"
                      f"{fyi}\n"
                      "Do not edit files their tasks clearly own; run `mk pend` if unsure.")
-        # Architect mode: the lead judges evidence packs instead of re-reading diffs, so the
-        # envelope tells the worker the reply shape. Checklist-echo + recorded-assumption +
+        # Architect/chief: the lead judges evidence packs instead of re-reading diffs, so the
+        # envelope tells the worker the reply shape (chief executes with architect discipline --
+        # same blueprint contract, header labelled by mode). Checklist-echo + recorded-assumption +
         # positive scoping are the measured weak-model compliance levers (see architect research:
         # checklists beat free-form self-review; negative rule lists backfire; silent assumptions
-        # are the top small-model failure). Planner replies are plans, not diffs -- skip.
-        if self.mode == "architect" and job.to != "planner":
-            body += ("\n\n---\nARCHITECT-MODE reply contract: follow the blueprint exactly -- "
+        # are the top small-model failure). Planner replies are plans/blueprints, not diffs -- skip.
+        # Thorough gets the LIGHTER sibling below: same evidence discipline + gate-detectable
+        # checklist shape, minus the blueprint-specific clauses (thorough asks are ordinary asks).
+        if self.mode in ("architect", "chief") and job.to != "planner":
+            body += (f"\n\n---\n{self.mode.upper()}-MODE reply contract: follow the blueprint exactly -- "
                      "implement precisely what it names, the simplest COMPLETE version that "
                      "meets the criteria (no TODOs or placeholder stubs in anything you report "
                      "done), touching only the files it lists. Where the blueprint is silent, "
@@ -178,7 +188,10 @@ class Mkd:
                      "alter the acceptance check itself to make it pass (unless the task "
                      "explicitly says to) -- fix the code, not the check. If the same criterion "
                      "fails 3 times: stop repeating yourself, list the most likely causes, try "
-                     "the best one; still failing -> report BLOCKED with what you ruled out.\n"
+                     "the best one; still failing -> run mk-done IMMEDIATELY with BLOCKED: the "
+                     "exact question, 2 candidate options, and what you ruled out -- a true "
+                     "BLOCKED costs less than a wrong guess; you keep your session, the lead's "
+                     "decision arrives as your next task and you continue with full context.\n"
                      "Before running mk-done, self-audit: did you meet EVERY criterion and touch "
                      "EVERY named location? Fix gaps first. Your mk-done reply is an EVIDENCE "
                      "PACK:\n"
@@ -186,6 +199,25 @@ class Mkd:
                      "its proof (the exact command you ran + output tail)\n"
                      "2) changed files (file:line list)\n"
                      "3) recorded assumptions + risks.\n"
+                     "Blocked, or the task doesn't match reality? Say so IN your reply -- never "
+                     "ask main mid-task.")
+        elif self.mode == "thorough" and job.to != "planner":
+            body += ("\n\n---\nTHOROUGH-MODE reply contract: your result will be re-run and "
+                     "reviewed by a DIFFERENT agent, so make it verifiable. Complete means "
+                     "complete: no TODOs or placeholder stubs in anything you report done. "
+                     "Never alter the check/test itself to make it pass (unless the task "
+                     "explicitly says to) -- fix the code, not the check. If the same failure "
+                     "repeats 3 times: stop repeating yourself, list the likeliest causes, try "
+                     "the best one; still failing -> run mk-done IMMEDIATELY with BLOCKED: the "
+                     "exact question, 2 candidate options, and what you ruled out (a true "
+                     "BLOCKED costs the crew less than a false done); you keep your session -- "
+                     "the lead's decision arrives as your next task.\n"
+                     "Before running mk-done, self-audit: did you do EVERYTHING the task asked? "
+                     "Fix gaps first. Your mk-done reply is an EVIDENCE PACK:\n"
+                     "1) each claim as a CHECKLIST item ticked with its proof (the exact "
+                     "command you ran + output tail)\n"
+                     "2) changed files (file:line list)\n"
+                     "3) assumptions you made + known risks.\n"
                      "Blocked, or the task doesn't match reality? Say so IN your reply -- never "
                      "ask main mid-task.")
         (config.agent_inbox_dir(job.to) / f"{job.id}.md").write_text(body, encoding="utf-8")
@@ -207,7 +239,7 @@ class Mkd:
         context (invisible) instead of the daemon typing it into the pane."""
         from pathlib import Path
         inbox = config.agent_inbox_dir(job.to) / f"{job.id}.md"
-        done_exe = str(Path(sys.executable).parent / "mk-done.exe").replace("\\", "/")
+        done_exe = str(Path(sys.executable).parent / "mk-done")
         return (f'You have a delegated task, task id {job.id}. Read the file "{inbox}" and do everything it asks. '
                 f"When completely finished you MUST run this exact command as your final action to report completion: "
                 f'"{done_exe}" {job.id} "<a concise one-line summary of what you did>"')
@@ -263,7 +295,7 @@ class Mkd:
         """thorough/architect expect DEEP worker turns: triple the blocking-ask ceiling (1800s -> 90 min).
         Every other mode is unchanged. (Live case: codex legitimately worked 40+ min and the 30-min
         ask timed it out TWICE — the work survived on disk but the reply was lost.)"""
-        return timeout * (3 if self.mode in ("thorough", "architect") else 1)
+        return timeout * (3 if self.mode in ("thorough", "architect", "warroom", "chief", "venture") else 1)
 
     def _late_result(self, job_id, agent, reply, ts=None) -> None:
         """A finish artifact for a job that is not the current in-flight job: the WORK is real
@@ -318,7 +350,63 @@ class Mkd:
             except Exception:
                 pass
 
+    # Modes whose lead promises verification discipline -- the two lead-side gates audit only these.
+    _AUDITED_MODES = ("architect", "thorough", "chief")
+
+    def _nudge_main(self, line: str) -> None:
+        """Type one enforcement line into the lead pane (best-effort, never raises)."""
+        pane = self.panes.get("main")
+        if pane is not None:
+            try:
+                self.mux.send_line(pane, line)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _is_verify_ask(text: str) -> bool:
+        """A verification ask starts with the literal marker VERIFY (case-insensitive, leading
+        whitespace tolerated) -- the clause tells the lead to phrase re-run asks exactly so."""
+        return (text or "").lstrip()[:7].upper().startswith("VERIFY")
+
+    def _dispatch_audit(self, frm: str, to: str, text: str) -> None:
+        """Lead-side gate, dispatch half. A VERIFY: ask resets the unverified streak. In chief, the
+        first non-VERIFY worker dispatch after a planner draft must carry a CHECKED stamp (the lead's
+        recorded ruling that it reviewed the blueprint against its own directive) -- a missing stamp
+        gets ONE nudge. Tripwires, not walls: nothing is blocked, the lead just can't drift silently."""
+        if self.mode not in self._AUDITED_MODES or frm != "main":
+            return
+        if self._is_verify_ask(text):
+            self._unverified_done = 0
+            self._verify_nudged = False
+            return
+        if self.mode == "chief" and to != "planner" and self._draft_pending_check:
+            self._draft_pending_check = False          # one shot per draft, stamped or nudged
+            if "CHECKED" not in (text or "")[:300].upper():
+                self._nudge_main("[MKCREW] CHECK GATE: a planner draft was dispatched without a "
+                                 "CHECKED stamp -- review the blueprint against your directive and "
+                                 "prepend your ruling (CHECKED: ...) to dispatched blueprints.")
+
+    def _verify_audit(self, job) -> None:
+        """Lead-side gate, completion half. Counts completed build results; at 3 in a row with no
+        VERIFY: ask dispatched, nudges the lead once. In chief, a completed planner draft arms the
+        CHECK gate for the next dispatch."""
+        if self.mode not in self._AUDITED_MODES or job.frm != "main":
+            return
+        if job.to == "planner":
+            if self.mode == "chief":
+                self._draft_pending_check = True
+            return
+        if self._is_verify_ask(job.text):
+            return                                      # a completed verification is not an unverified build
+        self._unverified_done += 1
+        if self._unverified_done >= 3 and not self._verify_nudged:
+            self._verify_nudged = True
+            self._nudge_main("[MKCREW] VERIFY GATE: 3 results accepted with no independent re-run -- "
+                             "dispatch a VERIFY: ask to a different worker (or state in your notes why "
+                             "verification does not apply).")
+
     def ask(self, frm: str, to: str, text: str, timeout: float = 1800) -> str:
+        self._dispatch_audit(frm, to, text)
         job = self.jobs.open(frm=frm, to=to, text=text)
         ev = threading.Event()
         self._events[job.id] = ev
@@ -429,6 +517,7 @@ class Mkd:
                 self._wd.pop(inflight.id, None)
                 self._on_job_completed(inflight.id, status="DONE")
                 self._evidence_gate(inflight, data.get("reply", ""))
+                self._verify_audit(inflight)
                 inflight_by_id.pop(inflight.id, None)
                 self._consume_artifact(art)
                 break
@@ -464,15 +553,15 @@ class Mkd:
             self._last_wd = self._now()
 
     def _evidence_gate(self, job, reply: str) -> None:
-        """Architect-mode completion tripwire -- HARNESS-enforced, not prompt-enforced: prompted
+        """Architect/thorough/chief completion tripwire -- HARNESS-enforced, not prompt-enforced: prompted
         procedure alone measures ~70-90% compliance while an external check runs near 100%, and
-        agents demonstrably self-certify. The envelope's reply contract asks for a checklist with
-        command proof; a reply that clearly lacks that shape (too short, or no numbered/ticked
-        item at all) is stamped into the ledger ('thin_evidence' -- folded by `mk stats`) and the
-        lead is told to treat it as UNVERIFIED. Deliberately a tripwire, not a wall: the job still
-        completes (a blocking gate could deadlock the ask), the lead just stops accepting a bare
-        'done' as proof. Planner replies are plans, not evidence -- exempt."""
-        if self.mode != "architect" or job.to == "planner":
+        agents demonstrably self-certify. Both modes' envelopes carry a reply contract asking for a
+        checklist with command proof; a reply that clearly lacks that shape (too short, or no
+        numbered/ticked item at all) is stamped into the ledger ('thin_evidence' -- folded by
+        `mk stats`) and the lead is told to treat it as UNVERIFIED. Deliberately a tripwire, not a
+        wall: the job still completes (a blocking gate could deadlock the ask), the lead just stops
+        accepting a bare 'done' as proof. Planner replies are plans, not evidence -- exempt."""
+        if self.mode not in ("architect", "thorough", "chief") or job.to == "planner":
             return
         r = (reply or "").strip()
         if len(r) >= 200 and ("1)" in r or "1." in r or "[x]" in r.lower()):
@@ -618,7 +707,7 @@ class Mkd:
             # above and is never cut off.
             if injected:
                 # thorough/architect = patient watchdog: deep tasks stay quiet 3x longer before giveup
-                stall = POST_PICKUP_STALL_SECONDS * (3 if self.mode in ("thorough", "architect") else 1)
+                stall = POST_PICKUP_STALL_SECONDS * (3 if self.mode in ("thorough", "architect", "warroom", "chief", "venture") else 1)
                 quiet = self._now() - wd.get("progress_ts", self._now())
                 # LIVE INCIDENT (worker3 "DONE-OK"): an agent that finishes but only SAYS so in its
                 # transcript never runs mk-done -- the job rides DELIVERED until giveup while the
@@ -652,7 +741,7 @@ class Mkd:
             # Not yet picked up: the content-free wake may not have landed (an idle TUI ignores a
             # bare Enter) — re-wake on an interval, then give up if it's never picked up.
             if self._now() - wd["delivered_ts"] > WAKE_RETRY_SECONDS:
-                if wd["wakes"] < (MAX_RETRY * 2 if self.mode in ("thorough", "architect") else MAX_RETRY):
+                if wd["wakes"] < (MAX_RETRY * 2 if self.mode in ("thorough", "architect", "warroom", "chief", "venture") else MAX_RETRY):
                     self._wake(agent)
                     self.jobs.record_event(inflight.id, "rewake")
                     wd["wakes"] += 1

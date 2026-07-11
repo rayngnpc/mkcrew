@@ -1533,3 +1533,157 @@ def test_mkdone_reminder_self_heals_prose_done_worker(tmp_path, monkeypatch):
     d._last_wd = -999; d._poll_once()
     assert d.jobs.get(job.id).status == "DONE"
     assert d.jobs.get(job.id).reply.startswith("research summary")
+
+
+def test_warroom_widens_watchdog_patience_like_thorough():
+    """warroom joins thorough/architect in the patient set: plan drafting is a long, quiet turn --
+    the ask ceiling triples so the panel isn't cut off mid-draft."""
+    assert Mkd(mux=FakeMux(), mode="warroom")._ask_ceiling(1800) == 5400
+    assert Mkd(mux=FakeMux(), mode="standard")._ask_ceiling(1800) == 1800
+
+
+def test_venture_widens_watchdog_patience():
+    """venture joins the patient set: desk research + brief drafting are long, quiet turns."""
+    assert Mkd(mux=FakeMux(), mode="venture")._ask_ceiling(1800) == 5400
+
+
+def test_thorough_envelope_carries_lighter_reply_contract(tmp_path, monkeypatch):
+    """thorough appends a LIGHTER sibling of architect's evidence contract to worker envelopes
+    (numbered claim+proof checklist, no-TODO, anti-gaming, 3-fail pivot, honest BLOCKED) so the
+    lead's run-the-result verification has evidence to check -- without the blueprint-specific
+    clauses (thorough asks are ordinary asks). Planner exempt, like architect."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    d = Mkd(mux=FakeMux(), mode="thorough")
+    jw = d.jobs.open(frm="main", to="worker1", text="build X")
+    d._write_inbox(jw)
+    jp = d.jobs.open(frm="main", to="planner", text="plan X")
+    d._write_inbox(jp)
+    w = (config.agent_inbox_dir("worker1") / f"{jw.id}.md").read_text(encoding="utf-8")
+    p = (config.agent_inbox_dir("planner") / f"{jp.id}.md").read_text(encoding="utf-8")
+    assert "THOROUGH-MODE reply contract" in w
+    assert "EVIDENCE PACK" in w and "CHECKLIST" in w              # same gate-detectable shape
+    assert "no TODOs or placeholder stubs" in w                   # completeness mandate
+    assert "fix the code, not the check" in w                     # anti-verification-gaming
+    assert "repeats 3 times" in w                                 # retry ceiling + pivot
+    assert "never ask main mid-task" in w
+    assert "blueprint" not in w.lower()                           # lighter: no blueprint clauses
+    assert "reply contract" not in p                              # planner exempt
+
+
+def test_chief_envelope_carries_blueprint_contract_planner_exempt(tmp_path, monkeypatch):
+    """chief executes with architect discipline, so worker envelopes carry the SAME blueprint reply
+    contract (header labelled CHIEF-MODE, not ARCHITECT-MODE) -- and the planner, whose replies are
+    blueprints not diffs, stays exempt. chief also joins the widened-patience set."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    d = Mkd(mux=FakeMux(), mode="chief")
+    jw = d.jobs.open(frm="main", to="worker1", text="build X")
+    d._write_inbox(jw)
+    jp = d.jobs.open(frm="main", to="planner", text="elaborate the directive")
+    d._write_inbox(jp)
+    w = (config.agent_inbox_dir("worker1") / f"{jw.id}.md").read_text(encoding="utf-8")
+    p = (config.agent_inbox_dir("planner") / f"{jp.id}.md").read_text(encoding="utf-8")
+    assert "CHIEF-MODE reply contract" in w                        # mode-correct header
+    assert "EVIDENCE PACK" in w and "follow the blueprint exactly" in w
+    assert "reply contract" not in p                               # planner exempt
+    assert Mkd(mux=FakeMux(), mode="chief")._ask_ceiling(1800) == 5400   # patient like architect
+
+
+def test_evidence_gate_covers_thorough_mode(tmp_path, monkeypatch):
+    """the harness tripwire behind the reply contract runs in thorough too -- a contract without
+    its gate is prompt-only (~70-90% compliance vs ~100% enforced). Thin thorough reply ->
+    'thin_evidence' + lead told UNVERIFIED; rich checklist reply passes silently."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    def run_one(reply):
+        mux = FakeMux()
+        d = Mkd(mux=mux, mode="thorough")
+        d.register_agent("worker1", pane_id="%9")
+        d.register_agent("main", pane_id="%1")
+        j = d.jobs.open(frm="main", to="worker1", text="t")
+        d._deliver(j)
+        art = config.agent_finish_dir("worker1") / f"done-{j.id}-1.json"
+        art.write_text(json.dumps({"job_id": j.id, "actor": "worker1", "reply": reply,
+                                   "ts": time.time()}), encoding="utf-8")
+        d._poll_once()
+        gate = [l for _p, l in mux.lines if "EVIDENCE GATE" in l]
+        thin = any(e.get("label") == "thin_evidence" for e in d.jobs.get(j.id).events)
+        return d.jobs.get(j.id).status, gate, thin
+
+    rich = ("1) tests pass -- ran pytest -q, tail: 12 passed. "
+            "2) build clean -- ran npm run build, tail: compiled successfully. "
+            "3) feature works -- ran curl localhost:3000, tail: 200 OK. "
+            "changed: src/app.py:10-42. assumptions: none. risks: none.")
+    status, gate, thin = run_one("done")                                  # thin: no shape at all
+    assert status == "DONE" and len(gate) == 1 and thin                   # completes, flags, tells lead
+    status, gate, thin = run_one(rich)                                    # rich checklist reply
+    assert status == "DONE" and not gate and not thin
+
+
+def test_verify_gate_nudges_after_three_unverified_builds(tmp_path, monkeypatch):
+    """Lead-side VERIFY gate: 3 completed build results with no VERIFY: ask -> ONE nudge into the
+    lead pane (once per streak, no spam); a VERIFY: ask resets the streak; a completed VERIFY: job
+    never counts as an unverified build."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    mux = FakeMux()
+    d = Mkd(mux=mux, mode="chief")
+    d.register_agent("main", pane_id="%1")
+    nudges = lambda: len([l for _p, l in mux.lines if "VERIFY GATE" in l])
+    for i in range(3):
+        d._verify_audit(_done_job(d, "worker1", f"build slice {i}"))
+    assert nudges() == 1                                    # fires exactly at 3
+    d._verify_audit(_done_job(d, "worker1", "build slice 3"))
+    assert nudges() == 1                                    # same streak -> no spam
+    d._dispatch_audit("main", "worker2", "VERIFY: re-run slice 0 against its criteria")
+    d._verify_audit(_done_job(d, "worker2", "VERIFY: re-run slice 0"))
+    d._verify_audit(_done_job(d, "worker1", "build slice 4"))
+    d._verify_audit(_done_job(d, "worker1", "build slice 5"))
+    assert nudges() == 1                                    # reset by VERIFY:, streak at 2
+    d._verify_audit(_done_job(d, "worker1", "build slice 6"))
+    assert nudges() == 2                                    # new streak reaches 3 -> nudges again
+
+
+def test_verify_gate_scope(tmp_path, monkeypatch):
+    """The gate audits only chief/architect/thorough, only main's jobs, and never counts the
+    planner (its replies are blueprints, not builds)."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    mux = FakeMux()
+    d = Mkd(mux=mux, mode="standard")
+    d.register_agent("main", pane_id="%1")
+    for i in range(5):
+        d._verify_audit(_done_job(d, "worker1", f"build {i}"))
+    assert not [l for _p, l in mux.lines if "VERIFY GATE" in l]          # standard never gates
+    mux2 = FakeMux()
+    d2 = Mkd(mux=mux2, mode="chief")
+    d2.register_agent("main", pane_id="%1")
+    for i in range(5):
+        d2._verify_audit(_done_job(d2, "planner", f"elaborate directive {i}"))
+    assert not [l for _p, l in mux2.lines if "VERIFY GATE" in l]         # planner exempt
+
+
+def test_check_gate_chief_stamps_planner_drafts(tmp_path, monkeypatch):
+    """CHECK gate (chief only): a completed planner draft arms the gate; the next non-VERIFY worker
+    dispatch without a CHECKED stamp gets ONE nudge; a stamped dispatch passes silently; a VERIFY:
+    ask does not consume the armed flag."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    mux = FakeMux()
+    d = Mkd(mux=mux, mode="chief")
+    d.register_agent("main", pane_id="%1")
+    nudges = lambda: len([l for _p, l in mux.lines if "CHECK GATE" in l])
+    d._verify_audit(_done_job(d, "planner", "elaborate slice 1"))   # draft lands
+    d._dispatch_audit("main", "worker2", "VERIFY: re-run something unrelated")
+    assert d._draft_pending_check is True                    # VERIFY ask does not consume the flag
+    d._dispatch_audit("main", "worker1", "implement slice 1 per the blueprint...")     # no stamp
+    assert nudges() == 1                                     # nudged once
+    d._dispatch_audit("main", "worker1", "implement slice 1b ...")
+    assert nudges() == 1                                     # one-shot per draft, no spam
+    d._verify_audit(_done_job(d, "planner", "elaborate slice 2"))   # re-arm
+    d._dispatch_audit("main", "worker1", "CHECKED: decisions intact, interfaces identical. implement slice 2 ...")
+    assert nudges() == 1                                     # stamped dispatch passes silently
+
+
+def _done_job(d, to, text):
+    """Open + immediately complete a job (JobStore allows one in-flight job per worker); the
+    lead-side audits run at completion time, so a completed job is exactly what they see."""
+    j = d.jobs.open(frm="main", to=to, text=text)
+    d.jobs.complete(j.id, reply="ok")
+    return j

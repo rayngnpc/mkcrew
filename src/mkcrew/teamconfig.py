@@ -1,6 +1,7 @@
 # src/mkcrew/teamconfig.py
 """Config-driven team definition and loader."""
 import json
+import os
 from pathlib import Path
 
 
@@ -63,22 +64,39 @@ def write_team(project_dir, agents, layout: str = "hub", mode: str = "standard")
     return cfg
 
 
-def build_team(count: int, providers=None, models=None, efforts=None) -> list[dict]:
+def build_team(count: int, providers=None, models=None, efforts=None, mode=None) -> list[dict]:
     """Compose `count` agents from the priority roster; apply per-agent provider / model / thinking.
 
     Each `providers` entry is a built-in name (claude/gemini/opencode) -> sets provider, or any other
     non-blank string -> provider='custom', command=<entry> (verbatim launch). `models[i]` / `efforts[i]`
-    override that agent's model / reasoning level when non-blank (blank = keep the roster default)."""
+    override that agent's model / reasoning level when non-blank (blank = keep the roster default).
+
+    `mode` makes the seating mode-aware: chief, warroom and venture are built AROUND the planner seat
+    (the blueprint/draft chair), but the priority roster only reaches 'planner' at count 5 -- so for
+    those modes a count that sliced it out gets its LAST seat replaced by the planner (count >= 3,
+    keeping at least one worker; a 2-agent main+worker team is left alone). Provider/model/effort
+    overlays stay index-mapped, so the UI row that became the planner keeps its picked CLI."""
     roster = {a["role"]: a for a in default_team()}
     count = max(1, min(int(count), len(_ROLE_PRIORITY)))
-    agents = [dict(roster[r]) for r in _ROLE_PRIORITY[:count]]
+    roles = list(_ROLE_PRIORITY[:count])
+    if mode in ("chief", "warroom", "venture") and count >= 3 and "planner" not in roles:
+        roles[-1] = "planner"
+    agents = [dict(roster[r]) for r in roles]
     for i, spec in enumerate(providers or []):
         if i >= len(agents):
             break
         spec = (spec or "").strip()
         if not spec:
             continue
-        if spec in _BUILTIN_PROVIDERS:
+        # "<builtin>@<binary>": keep the PROVIDER (so its completion hook + daemon delivery routing are
+        # intact) but run a specific CLI executable -- typically an account wrapper. Example:
+        # `claude@/home/u/bin/claudew` -> provider 'claude' with bin=/home/u/bin/claudew, which loads
+        # that account's credentials while still using the claude Stop hook.
+        base, sep, binpath = spec.partition("@")
+        if sep and base in _BUILTIN_PROVIDERS and binpath.strip():
+            agents[i]["provider"] = base
+            agents[i]["bin"] = os.path.expanduser(binpath.strip())
+        elif spec in _BUILTIN_PROVIDERS:
             agents[i]["provider"] = spec
         else:
             agents[i]["provider"] = "custom"

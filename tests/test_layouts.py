@@ -364,7 +364,7 @@ def test_hub_call_sequence_core_in_every_window(monkeypatch):
 def test_launch_threads_session_id_and_resume(monkeypatch):
     captured = {}
     def fake_lc(role, model, project, mode=None, effort=None, provider=None,
-                session_id=None, resume=False, command=None):
+                session_id=None, resume=False, command=None, bin=None):
         captured.update(session_id=session_id, resume=resume)
         return ["x"]
     monkeypatch.setattr(layouts.agent, "launch_command", fake_lc)
@@ -375,7 +375,7 @@ def test_launch_threads_session_id_and_resume(monkeypatch):
 def test_launch_threads_custom_command(monkeypatch):
     captured = {}
     def fake_lc(role, model, project, mode=None, effort=None, provider=None,
-                session_id=None, resume=False, command=None):
+                session_id=None, resume=False, command=None, bin=None):
         captured["command"] = command
         return ["x"]
     monkeypatch.setattr(layouts.agent, "launch_command", fake_lc)

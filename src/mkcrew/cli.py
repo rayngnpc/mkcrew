@@ -321,8 +321,14 @@ def cmd_start(argv):
         frozen.daemon_cmd(),                         # `python -m mkcrew.daemon` (dev) / `MKCREW.exe mkd` (frozen)
         stdout=log_fh,
         stderr=log_fh,
+        stdin=subprocess.DEVNULL,
         env={**os.environ, "MK_PROJECT": str(project)},   # so the daemon logs to THIS project's event DB
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        # DETACHED_PROCESS: the daemon gets NO console at all, so closing the cockpit's launch console
+        # can no longer kill it (the old CREATE_NO_WINDOW child still died with its parent console --
+        # the 'daemon dies with its console' incident). CREATE_NEW_PROCESS_GROUP shields it from the
+        # console's Ctrl-C/Ctrl-Break broadcasts. Linux twin: start_new_session=True (no SIGHUP).
+        creationflags=(getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+                       | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)),
     )
 
     # 3a: wait for port file; bail out if daemon died or file never appeared
@@ -371,9 +377,13 @@ def cmd_start(argv):
         # A first launch (is_new) or an unknown/custom provider stays fresh -> gets the bootstrap.
         sid, is_new = sessions.ensure(project, a["role"])
         prov = a.get("provider", "claude")
+        # Resolve the account wrapper NOW (a bare built-in provider -> the default account) so the resume
+        # check reads the SAME claude config dir the pane will run under -- else a session created under
+        # one account is wrongly --resumed under another and the pane crash-loops ("No conversation found").
+        a["bin"] = a.get("bin") or config.default_account_bin(prov)
         a["_session_id"] = sid
         a["_resume"] = (not is_new) and sessions.resume_flag(
-            project, sid, prov, shared_provider=prov_counts[prov] > 1)
+            project, sid, prov, shared_provider=prov_counts[prov] > 1, bin=a.get("bin"))
         if not a["_resume"]:
             fresh_roles.add(a["role"])
     mux.kill_server()
@@ -489,9 +499,13 @@ def _kill_daemon() -> None:
         if pid and _pid_is_mkd(pid):
             subprocess.run(["taskkill", "/PID", pid, "/F"],
                            capture_output=True, check=False)
+        elif pid and _pid_alive(pid):
+            # alive, but its cmdline isn't our daemon -> the OS reused the pid; never kill a stranger.
+            print(f"warning: pid {pid} in mkd.pid is alive but is NOT our daemon "
+                  f"(reused pid) -- refusing to kill it")
         elif pid:
-            print(f"warning: pid {pid} in mkd.pid is not our daemon "
-                  f"(stale/reused) -- refusing to kill it")
+            # dead pid: the daemon already stopped and left a stale pid file (cleared below). Benign.
+            print(f"note: cleared a stale mkd.pid (pid {pid} was already stopped)")
     except FileNotFoundError:
         pass
     except Exception as exc:
@@ -835,7 +849,7 @@ def cmd_add(argv):
     model = _flag("--model") or ""
     effort = _flag("--effort") or "high"
     try:
-        count = max(1, min(int(_flag("--agents") or "1"), 4))   # layouts fit <=4 agents well
+        count = max(1, min(int(_flag("--agents") or "1"), 6))   # pages grids <=6/window; single-window layouts best <=4
     except ValueError:                                          # non-numeric / '3.5' -> friendly exit, no traceback
         sys.exit("error: --agents must be a number")
     layout = _flag("--template") or "main-vertical"

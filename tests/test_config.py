@@ -1,4 +1,5 @@
 # tests/test_config.py
+from pathlib import Path
 from mkcrew import config
 
 
@@ -30,3 +31,19 @@ def test_event_db_under_runtime(tmp_path, monkeypatch):
     assert p.parent.exists()  # _ensure created the per-project dir
     # different projects -> different DBs (so one project's tasks never show in another's core)
     assert config.event_db(tmp_path / "projA") != config.event_db(tmp_path / "projB")
+
+
+def test_default_account_bin_resolves_bare_provider(monkeypatch, tmp_path):
+    """A bare built-in provider resolves to the DEFAULT account wrapper (flagged default:true, else the
+    first listed for that provider). No account for a provider -> None (the provider stays bare)."""
+    import json
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    config.runtime_root().mkdir(parents=True, exist_ok=True)
+    (config.runtime_root() / "accounts.json").write_text(json.dumps([
+        {"provider": "claude", "bin": "~/bin/claudew"},                 # first for claude
+        {"provider": "claude", "bin": "/x/claude", "default": True},    # explicit default wins over first
+        {"provider": "codex",  "bin": "/x/codex"},                      # only one -> it's the default
+    ]), encoding="utf-8")
+    assert config.default_account_bin("claude") == str(Path("/x/claude"))          # default:true beats first-listed
+    assert config.default_account_bin("codex") == str(Path("/x/codex"))
+    assert config.default_account_bin("opencode") is None               # no account -> bare

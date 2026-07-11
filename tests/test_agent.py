@@ -364,3 +364,25 @@ def test_agy_model_with_thinking_helper():
     assert agent._agy_model_with_thinking("Gemini 3.5 Flash", "max") == "Gemini 3.5 Flash"   # no variant
     assert agent._agy_model_with_thinking("Gemini 3.5 Flash", None) == "Gemini 3.5 Flash"
     assert agent._agy_model_with_thinking("", "high") == ""
+
+
+def test_write_launch_resolves_bare_provider_to_default_account(tmp_path, monkeypatch):
+    """ROOT fix for account drift (Windows flavor): a BARE built-in provider resolves to the
+    default account wrapper from accounts.json -- and a .cmd wrapper is invoked with `call` so
+    the relaunch loop survives. No accounts.json -> stays bare (single-account users unchanged)."""
+    import json as _json
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    wrapper = tmp_path / "claudew.cmd"
+    wrapper.write_text("@echo off\r\nclaude %*\r\n", encoding="utf-8")
+    (tmp_path / "mkcrew").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "mkcrew" / "accounts.json").write_text(_json.dumps(
+        [{"label": "work", "provider": "claude", "bin": str(wrapper), "default": True}]),
+        encoding="utf-8")
+    p = agent.write_launch_cmd("acctest", "claude-opus-4-8", tmp_path, provider="claude")
+    text = p.read_text(encoding="utf-8")
+    assert f"call {wrapper}" in text                     # resolved AND call-prefixed (.cmd wrapper)
+    # no accounts.json -> bare provider unchanged
+    (tmp_path / "mkcrew" / "accounts.json").unlink()
+    p2 = agent.write_launch_cmd("acctest2", "claude-opus-4-8", tmp_path, provider="claude")
+    t2 = p2.read_text(encoding="utf-8")
+    assert "claudew" not in t2 and "\nclaude --permission-mode" in t2.replace("\r\n", "\n")

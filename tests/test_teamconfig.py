@@ -368,3 +368,54 @@ def test_set_mode_persists_and_preserves_config(tmp_path):
     fresh = tmp_path / "fresh"; fresh.mkdir()
     teamconfig.set_mode(fresh, "plan-first")                           # no config yet -> default created
     assert teamconfig.load_mode(fresh) == "plan-first"
+
+
+def test_build_team_provider_at_bin_overrides_binary_keeps_provider():
+    """`<builtin>@<path>` keeps the provider (so its hook + delivery routing stay intact) and sets
+    bin=<path> (an account wrapper). A bare custom command (no `@`, or a non-builtin prefix) is still
+    provider='custom' with a verbatim command -- unchanged."""
+    team = teamconfig.build_team(4, providers=[
+        "claude@/home/u/bin/claudew", "codex@/x/codexw", "opencode@~/bin/opencode-bash", "antigravity"])
+    assert team[0]["provider"] == "claude"      and team[0]["bin"] == "/home/u/bin/claudew"
+    assert team[1]["provider"] == "codex"       and team[1]["bin"] == "/x/codexw"
+    assert team[2]["provider"] == "opencode"    and team[2]["bin"].endswith("/bin/opencode-bash")  # ~ expanded
+    assert "/" in team[2]["bin"] and not team[2]["bin"].startswith("~")
+    assert team[3]["provider"] == "antigravity" and "bin" not in team[3]                            # plain builtin
+    # not a bin override: no '@', or a non-builtin prefix -> plain custom command
+    t2 = teamconfig.build_team(2, providers=["/home/u/bin/whatever --flag", "notaprovider@/x"])
+    assert t2[0]["provider"] == "custom" and t2[0].get("bin") is None and t2[0]["command"] == "/home/u/bin/whatever --flag"
+    assert t2[1]["provider"] == "custom" and t2[1].get("bin") is None
+
+
+def test_build_team_planner_seated_for_planner_centric_modes():
+    """chief/warroom are built AROUND the planner seat, but the priority roster only reaches
+    'planner' at count 5 -- so for those modes the LAST seat becomes the planner (count >= 3;
+    a 2-agent team is untouched; count >= 5 already has the planner; other modes unchanged)."""
+    roles = lambda **kw: [a["role"] for a in teamconfig.build_team(**kw)]
+    assert roles(count=4, mode="chief")   == ["main", "worker1", "worker2", "planner"]
+    assert roles(count=3, mode="warroom") == ["main", "worker1", "planner"]
+    assert roles(count=5, mode="chief")   == ["main", "worker1", "worker2", "worker3", "planner"]  # no double
+    assert roles(count=2, mode="chief")   == ["main", "worker1"]           # keep the only worker
+    assert roles(count=4, mode="standard") == ["main", "worker1", "worker2", "worker3"]  # others untouched
+    assert roles(count=4)                  == ["main", "worker1", "worker2", "worker3"]  # default untouched
+
+
+def test_build_team_venture_mode_also_seats_planner():
+    """venture is planner-centric like chief/warroom (the planner drafts the business brief), so the
+    same last-seat-becomes-planner rule applies."""
+    assert [a["role"] for a in teamconfig.build_team(4, mode="venture")] == \
+        ["main", "worker1", "worker2", "planner"]
+
+
+def test_build_team_six_agents_includes_planner():
+    """A 6-agent team follows the priority roster: main, worker1-3, then the PLANNER (the warroom
+    draft seat), then worker4 -- so raising the Studio cap to 6 gives plan-panel teams for free."""
+    roles = [a["role"] for a in teamconfig.build_team(6)]
+    assert roles == ["main", "worker1", "worker2", "worker3", "planner", "worker4"]
+
+
+def test_build_team_provider_overlay_follows_the_planner_seat():
+    """Provider picks are index-mapped, so the UI row that became the planner keeps its chosen CLI
+    (e.g. the 4th row assigned antigravity/agy becomes the agy planner in chief mode)."""
+    team = teamconfig.build_team(4, providers=["claude", "claude", "codex", "antigravity"], mode="chief")
+    assert team[3]["role"] == "planner" and team[3]["provider"] == "antigravity"

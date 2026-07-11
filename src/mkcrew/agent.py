@@ -252,10 +252,13 @@ import { readFileSync, appendFileSync } from "node:fs"
 
 export const MkcrewPull = async ({ client }) => {
   const role = process.env.MK_ACTOR
+  // MK_RUNTIME_ROOT (pinned by `mk start`) is the daemon's runtime root, so an account wrapper
+  // that rewrites profile dirs can't hide the daemon; fall back to the LOCALAPPDATA formula.
   const local = process.env.LOCALAPPDATA
-  if (!role || !local) return {}                 // not in a cockpit — do nothing
-  const portFile = `${local}/mkcrew/runtime/mkd.port`
-  const logFile  = `${local}/mkcrew/runtime/mk_opencode_plugin.log`
+  const root = process.env.MK_RUNTIME_ROOT || (local && `${local}/mkcrew`)
+  if (!role || !root) return {}                 // not in a cockpit — do nothing
+  const portFile = `${root}/runtime/mkd.port`
+  const logFile  = `${root}/runtime/mk_opencode_plugin.log`
   // ponytail: debug breadcrumb while proving internal delivery — drop once confirmed live.
   const dbg = (m) => { try { appendFileSync(logFile, `${Date.now()} ${role} ${m}\n`) } catch {} }
 
@@ -308,12 +311,18 @@ def ensure_opencode_plugin(project_dir) -> Path:
 def _agent_command_line(provider: str, model: str, mode: str,
                          effort: str | None, role: str, project_dir,
                          session_id: str | None = None, resume: bool = False,
-                         command: str | None = None) -> str:
+                         command: str | None = None, bin: str | None = None) -> str:
     """Return the provider-specific command line (no trailing newline).
 
     All providers launch as PERSISTENT INTERACTIVE sessions.  Per-job tasks are
     delivered later by the daemon via psmux send-keys (pointing to the per-job
     inbox and running mk-done <job_id>).  No inbox path or task is baked in here.
+
+    `bin` overrides the CLI executable for a BUILT-IN provider while KEEPING the
+    provider (so its hooks + delivery routing are unchanged) -- e.g. provider
+    'claude' with bin='C:/Users/u/.local/bin/claudew.cmd' runs a work-account
+    wrapper that sets the right CLAUDE_CONFIG_DIR, yet still uses the claude
+    Stop hook.
     """
     if provider == "custom":
         return command or ""
@@ -323,7 +332,7 @@ def _agent_command_line(provider: str, model: str, mode: str,
         if session_id:
             session_flag = (f" --resume {session_id}" if resume
                             else f" --session-id {session_id}")
-        return f"claude --permission-mode {mode} --model {model}{effort_flag}{session_flag}"
+        return f"{bin or 'claude'} --permission-mode {mode} --model {model}{effort_flag}{session_flag}"
     if provider == "gemini":
         # --skip-trust: bypass the trusted-folder gate (like claude's folder-trust) so the
         #   agent runs unattended; -y/--yolo: auto-approve all tools; -m: model.
@@ -341,7 +350,7 @@ def _agent_command_line(provider: str, model: str, mode: str,
         if session_id:
             session_flag = (f" --resume {session_id}" if resume
                             else f" --session-id {session_id}")
-        return f"gemini --skip-trust -y{session_flag}{_model_arg(model)}"
+        return f"{bin or 'gemini'} --skip-trust -y{session_flag}{_model_arg(model)}"
     if provider == "opencode":
         # opencode (no subcommand) starts the interactive TUI.  Delivery is INTERNAL: the
         # mkcrew-pull plugin (ensure_opencode_plugin) runs in-process and PULLS /next, so there is
@@ -351,7 +360,7 @@ def _agent_command_line(provider: str, model: str, mode: str,
         #   LAST session in the SAME interactive TUI (verified in `opencode --help`: "-c, --continue
         #   continue the last session"; pairs with -m). Fresh launches omit it. Never `opencode run`.
         continue_flag = " --continue" if resume else ""
-        return f"opencode{continue_flag}{_model_arg(model)}"
+        return f"{bin or 'opencode'}{continue_flag}{_model_arg(model)}"
     if provider == "antigravity":
         # `agy` (Antigravity CLI) is interactive by default (--print/-p is the headless mode we
         # must avoid).  --dangerously-skip-permissions is its auto-approve (claude's
@@ -369,7 +378,7 @@ def _agent_command_line(provider: str, model: str, mode: str,
         #   silently-dropped control, and no separate effort/-c flag (agy has none).
         continue_flag = " --continue" if resume else ""
         agy_model = _agy_model_with_thinking(model, effort)
-        return f"agy --dangerously-skip-permissions{continue_flag}{_model_arg(agy_model, '--model')}"
+        return f"{bin or 'agy'} --dangerously-skip-permissions{continue_flag}{_model_arg(agy_model, '--model')}"
     if provider == "codex":
         # codex with NO subcommand launches its DEFAULT interactive TUI (the headless mode is
         # the 'exec' subcommand, which we must never use).  --dangerously-bypass-approvals-and-
@@ -387,7 +396,7 @@ def _agent_command_line(provider: str, model: str, mode: str,
         #   auto-update); if a live `mk start` restart shows codex rejecting a flag on the resume line,
         #   drop that flag from the resume arm after the test.
         resume_sub = " resume --last" if resume else ""
-        return (f"codex --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust"
+        return (f"{bin or 'codex'} --dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust"
                 f"{_model_arg(model)}{_codex_effort(effort)}{resume_sub}")
     raise ValueError(f"unknown provider: {provider!r}")
 
@@ -395,20 +404,32 @@ def _agent_command_line(provider: str, model: str, mode: str,
 def write_launch_cmd(role: str, model: str, project_dir,
                      mode: str = "bypassPermissions", effort: str | None = None,
                      provider: str = "claude", session_id: str | None = None,
-                     resume: bool = False, command: str | None = None) -> Path:
+                     resume: bool = False, command: str | None = None,
+                     bin: str | None = None) -> Path:
     scripts = Path(sys.executable).parent
     from . import frozen
     shim = frozen.shim_bin()                              # frozen: dir with mk.cmd/mk-done.cmd shims
     path_dirs = f"{scripts};{shim}" if shim else f"{scripts}"
     p = config.agent_config_dir(role) / "launch.cmd"
+    if not bin and provider != "custom":
+        # ROOT fix for account drift: a BARE built-in provider (no explicit bin) resolves to the user's
+        # DEFAULT account wrapper from accounts.json, so it can't fall through to the shared, ambient
+        # ~/.claude whose signed-in account changes. None (no account defined) -> stays bare, unchanged.
+        bin = config.default_account_bin(provider)
     agent_cmd = _agent_command_line(provider, model, mode, effort, role, project_dir,
-                                    session_id=session_id, resume=resume, command=command)
+                                    session_id=session_id, resume=resume, command=command, bin=bin)
+    if bin and provider != "custom" and bin.lower().endswith((".cmd", ".bat")):
+        # A batch script invoking another batch without `call` never RETURNS -- the relaunch loop
+        # below would silently die with the wrapper. (Custom commands carry their own `call`.)
+        agent_cmd = "call " + agent_cmd
     # codex self-updates via the LazyCodex/omo `session-start-checking-auto-update` hook, then exits
     # "please restart" — which would drop THIS agent pane to a bare shell mid-cockpit. Disable that
     # auto-update for this launch only (env-scoped, honoured by omo's auto-update.mjs); the user's
     # global codex keeps auto-updating normally outside MKCREW. ponytail: env flag, no global edits.
     codex_env = ('set "LAZYCODEX_AUTO_UPDATE_DISABLED=1"\r\n'
                  'set "OMO_CODEX_AUTO_UPDATE_DISABLED=1"\r\n') if provider == "codex" else ""
+    if provider == "opencode":
+        codex_env = 'set "OPENCODE_SKIP_UPDATE=1"\r\n'   # launch-time self-update can strand the pane
     # Relaunch loop: codex's NATIVE updater (and any crash/quit) can still drop the pane to a bare
     # shell, and users don't remember the bypass/resume flags. The pane itself remembers: any key
     # re-runs the SAME command with the same env. ponytail: same baked argv on relaunch - a fresh-start
@@ -418,6 +439,7 @@ def write_launch_cmd(role: str, model: str, project_dir,
         f'cd /d "{Path(project_dir)}"\r\n'
         f'set "PATH={path_dirs};%PATH%"\r\n'
         f'set "MK_ACTOR={role}"\r\n'
+        f'set "MK_RUNTIME_ROOT={config.runtime_root()}"\r\n'
         f"{codex_env}"
         ":mkcrew_relaunch\r\n"
         f"{agent_cmd}\r\n"
@@ -432,11 +454,12 @@ def write_launch_cmd(role: str, model: str, project_dir,
 def launch_command(role: str, model: str, project_dir,
                    mode: str = "bypassPermissions", effort: str | None = None,
                    provider: str = "claude", session_id: str | None = None,
-                   resume: bool = False, command: str | None = None) -> list[str]:
+                   resume: bool = False, command: str | None = None,
+                   bin: str | None = None) -> list[str]:
     # /k (not /c): if the agent CLI exits (crash / bad model / not logged in), keep the pane
     # open showing the error, instead of silently closing it so the cockpit looks empty.
     return ["cmd", "/k", str(write_launch_cmd(role, model, project_dir,
                                               mode=mode, effort=effort,
                                               provider=provider,
                                               session_id=session_id, resume=resume,
-                                              command=command))]
+                                              command=command, bin=bin))]

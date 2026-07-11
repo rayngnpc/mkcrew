@@ -25,7 +25,8 @@ def test_list_templates_reflects_registry():
 
 def test_list_modes_has_starter_set():
     keys = [m["key"] for m in studio.list_modes()]
-    assert keys == ["standard", "fast", "thorough", "plan-first", "architect"]   # postures, in display order
+    assert keys == ["standard", "fast", "thorough", "plan-first", "architect",
+                "warroom", "chief", "venture"]                      # postures, in display order
     assert keys[0] == "standard"                                    # default stays first (UI preselects [0])
 
 
@@ -201,7 +202,7 @@ def test_server_serves_api_and_ui(monkeypatch, tmp_path):
         s, body = _get(httpd, "/api/clis")
         assert s == 200 and J.loads(body)["clis"]["claude"] is True and "claude" in J.loads(body)["models"]
         s, body = _get(httpd, "/api/templates"); assert s == 200 and any(x["key"] == "main-vertical" for x in J.loads(body)["templates"])
-        s, body = _get(httpd, "/api/modes");     assert s == 200 and len(J.loads(body)["modes"]) == 5
+        s, body = _get(httpd, "/api/modes");     assert s == 200 and len(J.loads(body)["modes"]) == 8
         s, body = _get(httpd, "/");              assert s == 200 and "MKCREW Studio" in body
     finally:
         httpd.shutdown()
@@ -334,3 +335,44 @@ def test_serve_falls_back_to_free_port_when_default_is_denied(tmp_path, monkeypa
         monkeypatch.setattr(studio.ThreadingHTTPServer, "serve_forever", real_forever)
     assert served["port"] != busy_port and served["port"] > 0      # fell back to a REAL free port
     assert opened["url"].endswith(f":{served['port']}")            # browser got the actual port
+
+
+def test_load_accounts_filters_and_derives_labels(monkeypatch, tmp_path):
+    """load_accounts() reads accounts.json, expands ~, drops entries with an unknown provider or no
+    bin, and derives a label from the bin basename when absent. These become the Studio provider
+    dropdown's account options (value = provider@bin, parsed back by teamconfig.build_team)."""
+    import json
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    from mkcrew import config
+    config.runtime_root().mkdir(parents=True, exist_ok=True)
+    (config.runtime_root() / "accounts.json").write_text(json.dumps([
+        {"label": "claudew (work)", "provider": "claude", "bin": "~/bin/claudew"},
+        {"provider": "codex", "bin": "/x/codexw"},         # no label -> derived from basename
+        {"provider": "bogus", "bin": "/x/y"},              # unknown provider -> dropped
+        {"provider": "opencode"},                          # no bin -> dropped
+    ]), encoding="utf-8")
+    accts = studio.load_accounts()
+    assert [a["provider"] for a in accts] == ["claude", "codex"]
+    assert accts[0]["label"] == "claudew (work)"
+    assert accts[0]["bin"].replace("\\", "/").endswith("/bin/claudew") and "~" not in accts[0]["bin"]     # ~ expanded
+    assert accts[1]["label"] == "codex · codexw"                                       # derived
+
+
+def test_pages_template_fits_six_agents_others_stay_four():
+    """The 4->6 cap is per-template: pages (paged grids, <=6 agents/window by design) advertises 6 so
+    the fit-sort steers big teams to it; single-window layouts stay honest at 4 (readability)."""
+    from mkcrew import templates
+    assert templates.get("pages").max_agents == 6
+    for key in ("main-vertical", "even-horizontal", "lead-left-ide"):
+        assert templates.get(key).max_agents == 4, key
+
+
+def test_save_config_chief_mode_persists_planner_seat(tmp_path):
+    """Studio save passes the mode into build_team, so a 4-agent chief/warroom team.config carries
+    the planner in its last seat (what the roster chips + modal rows display via roleFor)."""
+    studio.save_config(tmp_path, count=4, layout="pages", mode="chief",
+                       providers=["claude", "claude", "codex", "antigravity"])
+    data = _json.loads((tmp_path / ".mkcrew" / "team.config").read_text(encoding="utf-8"))
+    assert [a["role"] for a in data["agents"]] == ["main", "worker1", "worker2", "planner"]
+    assert data["agents"][3]["provider"] == "antigravity"
+    assert data["mode"] == "chief"

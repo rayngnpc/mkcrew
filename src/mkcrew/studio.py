@@ -44,6 +44,18 @@ def _catalog_path():
     return config.runtime_root() / "models.json"
 
 
+def load_accounts() -> list:
+    """The account wrappers offered as Studio provider-dropdown options: config.load_accounts() (the
+    shared reader) restricted to KNOWN_PROVIDERS, with a display label derived from the bin basename when
+    absent. The UI offers each as a `provider@bin` option; build_team parses that back to provider + bin."""
+    out = []
+    for a in config.load_accounts():
+        if a["provider"] in KNOWN_PROVIDERS:
+            out.append({"label": a["label"] or f"{a['provider']} · {Path(a['bin']).name}",
+                        "provider": a["provider"], "bin": a["bin"]})
+    return out
+
+
 def load_catalog() -> dict:
     """The {models, thinking} catalog the Studio modal uses. Returns the built-in defaults UNLESS the
     user has saved a models.json (via the 'Edit models' panel) — we do NOT auto-seed the file, so code
@@ -85,12 +97,34 @@ _TEMPLATE_SCREEN = {
 # Only modes that actually change behavior. 'standard' is the silent default (no prompt clause);
 # 'fast' drops the gates. Genius/Loop were removed -- they only re-labelled what the lead already
 # does from the task (task-router escalates risky work; "keep developing" triggers the dev loop).
+# Card copy is written for the PICKER, not the engineer: `desc` = what happens, in plain words;
+# `when` = the situation you'd pick it in (rendered as its own "Use when" line). The lead-prompt
+# clauses in prompts.py stay the precise spec -- these only have to make the choice obvious.
 MODES = [
-    {"key": "standard",   "name": "Standard",   "desc": "Delegate -> do -> review. The balanced default."},
-    {"key": "fast",       "name": "Fast",       "desc": "No gates -- ship directly. Skips the plan/review/verify ceremony."},
-    {"key": "thorough",   "name": "Thorough",   "desc": "Correctness over speed: review gate on every result, claims verified by running them. Patient watchdog + 90-min ask ceiling for deep work."},
-    {"key": "plan-first", "name": "Plan First", "desc": "The lead presents its full task breakdown and waits for your OK before the first delegation."},
-    {"key": "architect",  "name": "Architect",  "desc": "Flagship-as-architect: the lead transmits its intelligence through complete task blueprints (decisions made, interfaces pinned, acceptance commands), calibrated to each worker's model tier -- weaker workers deliver a tier above themselves. Cross-verified by re-running, gated on a final assembly check against a definition of done. 90-min ask ceiling."},
+    {"key": "standard",   "name": "Standard",
+     "desc": "The everyday default: the lead delegates, workers do the work, results get a sensible review.",
+     "when": "Normal day-to-day work. If unsure, pick this."},
+    {"key": "fast",       "name": "Fast",
+     "desc": "No ceremony: delegate, accept, ship. Skips the plan/review/verify gates entirely.",
+     "when": "Low-stakes or throwaway work where speed matters more than safety."},
+    {"key": "thorough",   "name": "Thorough",
+     "desc": "Nothing is believed, everything is RUN: a different agent re-runs each result, workers must attach command-level proof, and twice-failed work is re-split for someone else. Slower, but hard to fool.",
+     "when": "Changes that must not break -- releases, money paths, gnarly bugs."},
+    {"key": "plan-first", "name": "Plan First",
+     "desc": "The lead shows you its full task breakdown and waits for your OK before anyone starts. No AI panel -- just your approval gate.",
+     "when": "You want to see and approve the plan before any work begins."},
+    {"key": "architect",  "name": "Architect",
+     "desc": "For big builds: the lead makes every decision and writes complete blueprints, so even weaker workers deliver above their tier. Results are cross-verified by re-running, and the whole deliverable gets a final assembly check. The lead never touches code.",
+     "when": "Big multi-task builds where you already know the approach."},
+    {"key": "warroom",    "name": "War Room",
+     "desc": "Measure twice, cut once: the planner drafts the plan, every other AI attacks it (different model families catch each other's blind spots), the lead merges the survivors into ONE plan -- and YOU approve it before anything is built.",
+     "when": "You're unsure HOW to build it, or a wrong approach would be expensive. After approving, switch to Architect to build."},
+    {"key": "chief",      "name": "Chief Architect",
+     "desc": "Architect with a drafting office: the lead still makes every decision, but the planner writes the detailed blueprints from them (checked before use). Same rigor as Architect, with the lead kept fresh on long sessions.",
+     "when": "Long Architect-style builds where the lead's context should stay lean."},
+    {"key": "venture",    "name": "Venture",
+     "desc": "From business idea to approved brief, like a compressed consulting engagement: the crew drafts the business brief itself (every claim labeled fact / hypothesis / unknown -- no invented numbers), asks you at most a handful of derived questions, desk-researches the facts with live sources, red-teams the result, and presents ONE decision review for your approval. Ends at the approved brief -- switch to Chief or Architect to build.",
+     "when": "You have a business idea, not yet a spec. Drop any notes into the project folder first -- the more you provide, the less it asks."},
 ]
 # A RUNNING cockpit can switch anytime:  mk mode <key>  (persists + updates daemon and lead live).
 
@@ -141,7 +175,7 @@ def save_config(project_dir, count: int, layout: str, providers=None, mode: str 
                 models=None, efforts=None, name=None) -> dict:
     """Build + persist the team.config for this project (per-agent provider/model/thinking). A non-blank
     `name` is persisted as the workspace identity (FIX #4); the returned `name` is the resolved label."""
-    agents = teamconfig.build_team(count, providers, models, efforts)
+    agents = teamconfig.build_team(count, providers, models, efforts, mode=mode)
     teamconfig.write_team(project_dir, agents, layout, mode)
     if name:
         teamconfig.set_name(project_dir, name)
@@ -405,7 +439,7 @@ def _make_handler(project_dir):
             elif path == "/api/clis":
                 cat = load_catalog()
                 self._json(200, {"clis": detect_clis(), "models": cat["models"],
-                                 "thinking": cat["thinking"]})
+                                 "thinking": cat["thinking"], "accounts": load_accounts()})
             elif path == "/api/templates":
                 self._json(200, {"templates": list_templates()})
             elif path == "/api/modes":

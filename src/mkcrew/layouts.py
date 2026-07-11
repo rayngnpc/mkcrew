@@ -21,7 +21,7 @@ def _launch(a, project):
         mode=a.get("mode", "bypassPermissions"),
         effort=a.get("effort"), provider=a.get("provider", "claude"),
         session_id=a.get("_session_id"), resume=a.get("_resume", False),
-        command=a.get("command"),
+        command=a.get("command"), bin=a.get("bin"),   # bin: override the CLI exe (e.g. an account wrapper)
     )
 
 

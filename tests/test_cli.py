@@ -431,7 +431,7 @@ def test_cmd_start_skips_bootstrap_for_resumed_agents(monkeypatch, tmp_path):
     monkeypatch.setattr(teamconfig, "load_layout", lambda p: "hub")
     monkeypatch.setattr(sessions, "ensure", lambda p, role: ("uuid-" + role, role == "main"))
     monkeypatch.setattr(sessions, "is_resumable",
-                        lambda p, sid, provider="claude": True)   # the saved session resumes
+                        lambda p, sid, provider="claude", bin=None: True)   # the saved session resumes
     monkeypatch.setattr(layouts, "get",
                         lambda name: (lambda mux, team, project, register, session: {"main": "%1", "planner": "%2"}))
     sent = []
@@ -474,7 +474,7 @@ def test_cmd_start_resumes_non_claude_main_on_restart(monkeypatch, tmp_path):
     monkeypatch.setattr(sessions, "ensure", lambda p, role: ("uuid-" + role, False))  # launched before
     seen = {}
     monkeypatch.setattr(sessions, "is_resumable",
-                        lambda p, sid, provider="claude": seen.update(provider=provider) or True)
+                        lambda p, sid, provider="claude", bin=None: seen.update(provider=provider) or True)
     monkeypatch.setattr(layouts, "get",
                         lambda name: (lambda mux, team, project, register, session: {"main": "%1"}))
     sent = []
