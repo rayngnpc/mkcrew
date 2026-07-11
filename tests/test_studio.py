@@ -376,3 +376,24 @@ def test_save_config_chief_mode_persists_planner_seat(tmp_path):
     assert [a["role"] for a in data["agents"]] == ["main", "worker1", "worker2", "planner"]
     assert data["agents"][3]["provider"] == "antigravity"
     assert data["mode"] == "chief"
+
+
+
+def test_load_accounts_hides_bare_binary_accounts_from_picker(tmp_path, monkeypatch):
+    """A bare-binary account (bin == the provider's own CLI, e.g. claude/"claude") is the SAME thing
+    as the plain provider dropdown option -- hide it from the picker. It stays in accounts.json as the
+    default:true anchor so a bare provider keeps resolving to PERSONAL (config.load_accounts returns
+    it; only the Studio option list filters). agy counts as antigravity's bare binary."""
+    import json as _json
+    from mkcrew import config
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    config.runtime_root().mkdir(parents=True, exist_ok=True)
+    (config.runtime_root() / "accounts.json").write_text(_json.dumps([
+        {"label": "Claude - personal", "provider": "claude", "bin": "claude", "default": True},
+        {"label": "Claude - work", "provider": "claude", "bin": "C:/u/bin/claudew.cmd"},
+        {"label": "Agy - personal", "provider": "antigravity", "bin": "agy", "default": True},
+    ]), encoding="utf-8")
+    labels = [a["label"] for a in studio.load_accounts()]
+    assert labels == ["Claude - work"]                              # bare claude + bare agy hidden
+    assert len(config.load_accounts()) == 3                        # resolution layer sees ALL
+    assert config.default_account_bin("claude") == "claude"        # personal anchor intact

@@ -50,9 +50,18 @@ def load_accounts() -> list:
     absent. The UI offers each as a `provider@bin` option; build_team parses that back to provider + bin."""
     out = []
     for a in config.load_accounts():
-        if a["provider"] in KNOWN_PROVIDERS:
-            out.append({"label": a["label"] or f"{a['provider']} · {Path(a['bin']).name}",
-                        "provider": a["provider"], "bin": a["bin"]})
+        if a["provider"] not in KNOWN_PROVIDERS:
+            continue
+        # Hide BARE-binary accounts (bin == the provider's own CLI, e.g. provider claude with bin
+        # "claude"): the plain provider option in the dropdown IS that account already, so listing it
+        # twice is noise. Such entries still matter in accounts.json -- their default:true anchors
+        # config.default_account_bin so a bare provider keeps resolving to PERSONAL (removing them
+        # would make the first WORK wrapper the implicit default and silently flip cockpits).
+        stem = Path(a["bin"]).stem.lower()
+        if stem in (a["provider"].lower(), _PROVIDER_BINARY.get(a["provider"], "").lower()):
+            continue
+        out.append({"label": a["label"] or f"{a['provider']} · {Path(a['bin']).name}",
+                    "provider": a["provider"], "bin": a["bin"]})
     return out
 
 
