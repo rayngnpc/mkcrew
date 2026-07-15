@@ -417,3 +417,52 @@ def test_enforcement_series_clause_upgrades():
     assert "sanity-check the reply" in fast
     for lead in (arch, chief, thor, fast):
         assert "\n" not in lead
+
+
+
+def test_planner_protocol_injected_when_planner_seated():
+    """The plan-review loop (live report: an agy/Opus-thinking planner has a SMALL budget): ONE
+    planning ask -> lead reviews -> deficiencies-only re-ask to the SAME planner -> approve -> only
+    then delegate to workers. Injected only when a planner is actually seated, and only for modes
+    that don't already carry their own planner contract (chief/warroom/venture do; fast skips the
+    planner entirely)."""
+    from mkcrew import prompts
+    team = [{"role": "main", "provider": "claude"},
+            {"role": "worker1", "provider": "claude"},
+            {"role": "planner", "provider": "antigravity"}]
+    for mode in ("standard", "thorough", "plan-first", "architect"):
+        p = prompts.lead_prompt("C:/x/mk", team=team, mode=mode)
+        assert "PLANNER PROTOCOL" in p, mode
+        assert "ONLY the deficiencies" in p and "SAME planner" in p
+        assert chr(10) not in p
+    for mode in ("fast", "chief", "warroom", "venture"):
+        assert "PLANNER PROTOCOL" not in prompts.lead_prompt("C:/x/mk", team=team, mode=mode), mode
+    no_planner = [{"role": "main", "provider": "claude"}, {"role": "worker1", "provider": "claude"}]
+    assert "PLANNER PROTOCOL" not in prompts.lead_prompt("C:/x/mk", team=no_planner)
+
+
+def test_non_claude_lead_gets_distilled_lead_loop():
+    """A codex/agy/opencode main cannot load the claude-only task-router/senior-developer-loop
+    skills -- the two files that carry the whole lead doctrine -- so it gets the loop DISTILLED
+    inline (live report: a non-claude main 'did not act like claude': one delegation, no review).
+    A claude main keeps the skills reference and does NOT get the inline copy."""
+    from mkcrew import prompts
+    for prov in ("codex", "antigravity", "opencode"):
+        p = prompts.lead_prompt("C:/x/mk", provider=prov)
+        assert "run the lead loop" in p, prov
+        assert "review every returned result" in p and "task-router" not in p
+        assert chr(10) not in p
+    c = prompts.lead_prompt("C:/x/mk", provider="claude")
+    assert "task-router" in c and "run the lead loop" not in c
+
+
+def test_planner_prompt_token_economy_and_revision():
+    """PLANNER_PROMPT v2: plans only, budget-frugal reading, tight numbered output, and the
+    incremental-revision contract (fix ONLY the flagged points; never rebuild from scratch)."""
+    from mkcrew import prompts
+    pp = prompts.PLANNER_PROMPT
+    assert "READ-ONLY" in pp and "NEVER edit/write" in pp
+    assert "token budget" in pp and "read just what the plan requires" in pp
+    assert "per-step acceptance command" in pp
+    assert "ONLY the flagged points" in pp and "never rebuild the plan from scratch" in pp
+    assert chr(10) not in pp

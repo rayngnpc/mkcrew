@@ -3,7 +3,7 @@
 
 LEAD_PROMPT = "You are the lead (main) of a MKCREW team. When given work, use the task-router and senior-developer-loop skills, and delegate role work to teammates with `mk ask <role> \"...\"` — worker1..worker6 for implementation work, reviewer for the review gate, planner for read-only planning. Do not do teammate work yourself. Wait for the first instruction before acting."
 
-PLANNER_PROMPT = "You are the READ-ONLY planner. Produce implementation plans only. NEVER edit/write files, run builds or dev-servers, or use any action/destructive tool. When a task is delegated to you, read it, produce a plan, and report the plan by running mk-done with your job id."
+PLANNER_PROMPT = "You are the READ-ONLY planner. Produce implementation plans only. NEVER edit/write files, run builds or dev-servers, or use any action/destructive tool. Your token budget is the team's scarcest -- spend it ONLY on plans: read just what the plan requires, and write it tight (numbered steps with exact files/functions, interfaces, ordering, and a per-step acceptance command; no prose padding). When a task is delegated to you, read it, produce the plan, and report it by running mk-done with your job id. When the lead returns your plan with deficiencies, fix ONLY the flagged points and mk-done the amended plan -- your session keeps the context, so never rebuild the plan from scratch."
 
 # Invariant: prompts must be single-line so send_line() delivers them atomically.
 assert "\n" not in LEAD_PROMPT, "LEAD_PROMPT must not contain newlines"
@@ -252,14 +252,34 @@ def lead_prompt(mk: str, team=None, mode: str = "standard", provider: str = "cla
                           if p in _PROVIDER_NOTES)
         if notes:
             roster_clause += f"CREW HANDLING: {notes}. "
+        # Plan-review loop for the planner seat (live report: an agy/Opus-thinking planner writes
+        # good plans on a SMALL budget -- so its tokens go to plans and surgical revisions, never
+        # work). Only for modes that don't already carry their own planner contract: chief/warroom/
+        # venture govern the planner themselves, and fast skips the planner entirely.
+        if (any("plan" in a.get("role", "") for a in mates)
+                and mode in ("standard", "thorough", "plan-first", "architect")):
+            roster_clause += (
+                "PLANNER PROTOCOL (its token budget is the team's scarcest -- plans only, never "
+                "work): send it ONE planning ask per goal with everything it needs inside the ask; "
+                "REVIEW the returned plan yourself against the goal (completeness, ordering, exact "
+                "files, per-step acceptance commands); if it falls short, re-ask the SAME planner "
+                "listing ONLY the deficiencies to fix (its session keeps the context -- never "
+                "resend the whole task); approve only a plan you would sign, THEN delegate "
+                "implementation to the workers per the approved plan. ")
     else:
         roster_clause = (
             "Delegate to your workers (worker1, worker2, ...) for implementation, reviewer for "
             "the review gate, planner for read-only planning. "
         )
     # Claude-only skills (src/mkcrew/skills): name them only for a claude lead, else they're noise.
+    # Claude leads load the full doctrine from the claude-only skills; every OTHER provider gets
+    # it DISTILLED inline -- without this a codex/agy main "doesn't act like claude" (live report):
+    # it fires one delegation and stops routing/reviewing, because nothing ever told it the loop.
     skills_clause = ("use the task-router and senior-developer-loop skills, and "
-                     if provider == "claude" else "")
+                     if provider == "claude" else
+                     "run the lead loop -- split the goal into role-sized tasks, review every "
+                     "returned result against what you asked before accepting it, verify doubtful "
+                     "claims via a different worker's re-run, integrate, report concisely -- and ")
     identity = (f'You are the lead (main) of the "{name}" workspace'
                 if name else "You are the lead (main) of a MKCREW team")
     return (
