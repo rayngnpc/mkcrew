@@ -386,6 +386,13 @@ def cmd_start(argv):
             project, sid, prov, shared_provider=prov_counts[prov] > 1, bin=a.get("bin"))
         if not a["_resume"]:
             fresh_roles.add(a["role"])
+            if not is_new and prov == "claude":
+                # A fresh RE-launch must never reuse the old uuid: claude registers an id at
+                # --session-id creation (before any transcript), so recreating with it dies
+                # "Session ID already in use" and the pane crash-loops (live incident: a spaced
+                # project path made the resume check miss a REAL saved session). The old id has
+                # no value on a fresh launch -- rotate to a brand-new one.
+                a["_session_id"] = sessions.rotate(project, a["role"])
     mux.kill_server()
     role_provider = {a["role"]: a.get("provider", "claude") for a in team}
     panes = layouts.get(layout_name)(

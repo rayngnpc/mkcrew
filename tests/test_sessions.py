@@ -152,3 +152,37 @@ def test_is_resumable_checks_account_wrapper_config_dir(tmp_path, monkeypatch):
     assert sessions.is_resumable(proj, sid, "claude", bin=str(wrapper)) is True
     monkeypatch.setattr(sessions.Path, "home", staticmethod(lambda: tmp_path / "nohome"))
     assert sessions.is_resumable(proj, sid, "claude") is False        # bare claude: different dir
+
+
+
+def test_is_resumable_matches_claude_encoding_for_spaced_paths(tmp_path, monkeypatch):
+    """LIVE INCIDENT (D:/helping friend/Dat/Bus 338/GroupWork): claude stores transcripts under the
+    path with every char outside [A-Za-z0-9_-] dashed (spaces INCLUDED) -- the old [:/\] rule kept
+    spaces, so the stat always missed for spaced paths, and the relaunch re-ran --session-id on an
+    id claude already knew: "Session ID already in use" + an infinite pane crash-loop. Underscores
+    stay (real "-_archive-" store entries)."""
+    import re as _re
+    from mkcrew import sessions
+    monkeypatch.setattr(sessions.Path, "home", staticmethod(lambda: tmp_path))
+    proj = r"D:\helping friend\Dat\Bus 338\GroupWork"
+    sid = "a996affc-f4b0-43f2-ae4a-4ee99def62ff"
+    store = tmp_path / ".claude" / "projects" / "D--helping-friend-Dat-Bus-338-GroupWork"
+    store.mkdir(parents=True)
+    (store / f"{sid}.jsonl").write_text("{}", encoding="utf-8")
+    assert sessions.is_resumable(proj, sid, "claude") is True      # spaces dash-encoded like claude
+    under = tmp_path / ".claude" / "projects" / "E--My_Project-App"
+    under.mkdir(parents=True)
+    (under / "x.jsonl").write_text("{}", encoding="utf-8")
+    assert sessions.is_resumable(r"E:\My_Project\App", "x", "claude") is True   # underscore KEPT
+
+
+def test_rotate_mints_fresh_uuid_and_persists(tmp_path):
+    """rotate() = the crash-loop net: a fresh RE-launch never reuses a possibly-registered id."""
+    from mkcrew import sessions
+    proj = tmp_path / "p"; proj.mkdir()
+    old, is_new = sessions.ensure(proj, "main")
+    assert is_new
+    new = sessions.rotate(proj, "main")
+    assert new != old and len(new) == 36
+    again, is_new2 = sessions.ensure(proj, "main")
+    assert again == new and is_new2 is False               # persisted as the role's id

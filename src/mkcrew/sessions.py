@@ -62,6 +62,21 @@ def ensure(project_dir, role: str) -> tuple[str, bool]:
     return sid, True
 
 
+def rotate(project_dir, role: str) -> str:
+    """Mint a FRESH session id for `role`, replacing the persisted one. The net under the resume
+    check: claude REGISTERS an id the moment --session-id creates it (before any transcript is
+    saved), so re-launching a not-resumable role with its OLD id can die "Session ID already in
+    use" and crash-loop the pane. When cmd_start has already decided the role launches FRESH, the
+    old id has no remaining value -- rotating costs nothing and makes that crash impossible no
+    matter what made the resume check miss (encoding drift, another account's store, a copied
+    .mkcrew dir)."""
+    data = _load(project_dir)
+    data[role] = str(uuid.uuid4())
+    _dir(project_dir).mkdir(parents=True, exist_ok=True)
+    _path(project_dir).write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return data[role]
+
+
 def clear(project_dir) -> None:
     """Remove the store so the next start creates fresh sessions."""
     _path(project_dir).unlink(missing_ok=True)
@@ -92,7 +107,7 @@ def is_resumable(project_dir, session_id: str, provider: str = "claude", bin: st
     this function adds the per-provider rule on top of that:
 
     - claude: resumable ONLY once claude has actually SAVED the transcript. Claude stores it at
-      <config_dir>/projects/<cwd with every non-alphanumeric char replaced by '-'>/<id>.jsonl, where
+      <config_dir>/projects/<cwd with every char outside [A-Za-z0-9_-] replaced by '-'>/<id>.jsonl, where
       <config_dir> is the AGENT'S claude dir (an account wrapper's CLAUDE_CONFIG_DIR, else ~/.claude --
       see _claude_config_dir). A launched-but-never-used session, OR a session saved under a DIFFERENT
       account, has none there -- so `claude --resume <id>` would fail 'No conversation found' and the
@@ -102,9 +117,14 @@ def is_resumable(project_dir, session_id: str, provider: str = "claude", bin: st
     - anything else (unknown / `custom`): never resumable -> always relaunch fresh."""
     if provider != "claude":
         return provider in _RESUMABLE_PROVIDERS
-    enc = re.sub(r"[:\\/]", "-", str(Path(project_dir)))   # Windows-verified: claude keeps _ and .
-    # (real ~/.claude/projects has "-_archive-" entries); a wrong encoding only degrades to a
-    # fresh --session-id, but match observed reality rather than guess wider.
+    # claude's OBSERVED store encoding (evidence from real ~/.claude/projects on this machine):
+    # spaces, colons and slashes all become '-' (live incident: "D:\helping friend\Dat\Bus 338\
+    # GroupWork" is stored as D--helping-friend-Dat-Bus-338-GroupWork -- the old [:\\/] rule kept
+    # the spaces, so the transcript stat ALWAYS missed for spaced paths and every restart re-ran
+    # --session-id on an id claude already knew: "Session ID already in use" + a pane crash-loop),
+    # while '_' is KEPT ("-_archive-" entries exist). A residual miss (e.g. an exotic char claude
+    # treats differently) is no longer fatal: cmd_start ROTATES the id on any fresh relaunch.
+    enc = re.sub(r"[^A-Za-z0-9_-]", "-", str(Path(project_dir)))
     return (_claude_config_dir(bin) / "projects" / enc / f"{session_id}.jsonl").exists()
 
 
