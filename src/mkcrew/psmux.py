@@ -29,11 +29,22 @@ class PsmuxBackend:
     def kill_server(self) -> None:
         self._run("kill-server")
 
+    @staticmethod
+    def _quote_cmd(command) -> list:
+        """Pane-spawn commands are handed to psmux as argv tokens after `--`, but psmux re-JOINS
+        them with spaces into one command line before spawning (join-then-parse). A token that
+        itself contains a space therefore SPLITS into several words in the pane process -- live
+        incident: a spaced project dir handed to mk-core-view arrived as project='D:/helping',
+        so the tower rendered an empty roster and lost its orientation flag. Pre-quote spaced
+        tokens so the re-join round-trips; everything else passes through untouched."""
+        return [f'"{c}"' if " " in str(c) and not str(c).startswith('"') else str(c)
+                for c in command]
+
     def new_session(self, session: str, window: str, command: list[str]) -> str:
         # -x/-y: build at a generous size so many-pane layouts (tiled/pages/dashboard) have room
         # to split BEFORE the client attaches; tmux scales the window down to the client on attach.
         result = self._run("new-session", "-d", "-s", session, "-n", window,
-                           "-x", "250", "-y", "60", "--", *command)
+                           "-x", "250", "-y", "60", "--", *self._quote_cmd(command))
         if result.returncode != 0:
             raise RuntimeError(f"psmux new-session failed: {result.stderr!r}")
         pane_id = self.pane_id(f"{session}:0")
@@ -45,7 +56,7 @@ class PsmuxBackend:
         args = ["new-window", "-t", session, "-d", "-n", window]
         if cwd:
             args += ["-c", cwd]
-        result = self._run(*args, "--", *command)
+        result = self._run(*args, "--", *self._quote_cmd(command))
         if result.returncode != 0:
             raise RuntimeError(f"psmux new-window failed: {result.stderr!r}")
         pane_id = self.pane_id(f"{session}:{window}")
@@ -59,7 +70,7 @@ class PsmuxBackend:
         args = ["split-window", flag, "-t", target, "-d"]
         if size is not None:
             args += ["-p", str(size)]   # psmux: new pane takes `size` percent
-        args += ["-P", "-F", "#{pane_id}", "--", *command]
+        args += ["-P", "-F", "#{pane_id}", "--", *self._quote_cmd(command)]
         result = self._run(*args)
         if result.returncode != 0:
             raise RuntimeError(f"psmux split-window failed: {result.stderr!r}")

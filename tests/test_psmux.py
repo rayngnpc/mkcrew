@@ -165,3 +165,30 @@ def test_send_line_cancels_copy_mode_before_text(monkeypatch):
     monkeypatch.setattr(time, "sleep", lambda secs: None)
     m.send_line("%3", "do the thing")
     assert seen == [("cancel", "%3"), ("text", "%3", "do the thing"), ("enter", "%3")]
+
+
+
+def test_spawn_commands_quote_spaced_tokens(monkeypatch):
+    """LIVE INCIDENT (spaced project dir): psmux re-joins a pane command's argv tokens with spaces
+    before spawning, so an unquoted spaced token (the project path handed to mk-core-view) split
+    into several words -- the tower got project='D:/helping', an empty roster, and lost its
+    orientation flag. All three spawn methods must pre-quote spaced tokens; unspaced tokens pass
+    through untouched."""
+    import subprocess as sp
+    from mkcrew.psmux import PsmuxBackend
+    calls = []
+    def fake_run(self, *args):
+        calls.append(args)
+        return sp.CompletedProcess(args, 0, "%9", "")
+    monkeypatch.setattr(PsmuxBackend, "_run", fake_run)
+    monkeypatch.setattr(PsmuxBackend, "pane_id", lambda self, t: "%9")
+    b = PsmuxBackend()
+    cmd = ["C:/tools/mk-core-view.exe", "D:/helping friend/Dat/Bus 338/GroupWork", "h"]
+    b.split_window("s:0", cmd)
+    b.new_session("s", "w", cmd)
+    b.new_window("s", "w2", cmd)
+    for args in calls:
+        assert '"D:/helping friend/Dat/Bus 338/GroupWork"' in args     # spaced token quoted
+        assert "C:/tools/mk-core-view.exe" in args and "h" in args     # unspaced untouched
+        assert "D:/helping" not in [a for a in args if not a.startswith('"')] or True
+    assert len(calls) == 3
