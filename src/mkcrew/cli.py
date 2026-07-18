@@ -168,6 +168,7 @@ def _clear_live_cockpit_lock() -> None:
 _SKILLS_SRC = Path(__file__).parent / "skills"
 _SKILL_NAMES = [
     "task-router",
+    "mkcrew-worker",
     "safe-agent-delegation",
     "senior-developer-loop",
     "team-self-improvement",

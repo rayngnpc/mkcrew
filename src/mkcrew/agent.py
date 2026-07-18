@@ -153,21 +153,46 @@ def ensure_codex_hook(project_dir, role: str) -> Path:
     return hp
 
 
-_CREW_MD = """\
-<!-- MKCREW:start -->
+_CREW_MD = """<!-- MKCREW:start -->
 ## MKCREW cockpit
 
 You are running inside a **MKCREW** multi-agent cockpit. The infrastructure is managed for you:
 the coordination daemon is up and your teammates are live in their own terminal panes, ready for
 work. Do NOT verify processes / ports / panes or hunt for setup commands.
 
-- **Lead (`main`):** delegate role work with `mk ask <role> "<task>"` (use the full mk path from your
-  launch message; a bare `mk` is not on PATH). `mk ask` blocks until that teammate replies. Do not do
-  teammate work yourself.
-- **Worker / planner:** you receive a delegated task in your pane (it names a job id and an inbox
-  file). Do exactly that task, then run `mk-done <job_id>` to report your result back to the lead.
-- **Commands:** `mk ask <role> "..."` (delegate), `mk status` (who is doing what), `mk pend` (open
-  jobs), `mk-done <job_id>` (report completion).
+### Roles
+- **Lead (`main`)**: delegate role work with `mk ask <role> "<task>"` (use the full mk path from
+  your launch message; a bare `mk` is not on PATH). `mk ask` blocks until that teammate replies.
+  Never do teammate work yourself.
+- **Worker**: your task arrives in your pane naming a job id + an inbox file. Lifecycle: read the
+  task -> do exactly that task -> self-audit (did you meet EVERY stated criterion and touch EVERY
+  named location?) -> report with `mk-done <job_id> "<result summary>"`. That command is the ONLY
+  completion signal -- saying done in chat does not count and the team stays blocked until it
+  runs. Stuck after ~3 attempts at one failure: report
+  `mk-done <job_id> "BLOCKED: <question> Option A: ... Option B: ..."` -- BLOCKED is a
+  first-class move; the lead rules and re-asks you with your session intact.
+- **Planner**: implementation plans only, never implementation; report the plan via mk-done.
+
+### Commands
+| Command | Use it when |
+|---|---|
+| `mk ask <role> "..."` | (lead) delegate a task; blocks until the reply arrives |
+| `mk-done <job_id> "..."` | (worker/planner) report your result -- the only completion signal |
+| `mk pend` | list open jobs -- check what teammates hold before touching shared files |
+| `mk status` | one tower snapshot: roster, live states, recent tasks |
+| `mk stats` | per-worker history: done/failed, median time, late + thin-evidence counts |
+| `mk trace <job_id>` | one job's full event timeline when something looks wrong |
+| `mk mode [<name>]` | show or switch the crew's working posture (applies live) |
+
+### Core modes + the tower
+The crew runs in a core mode (standard / fast / thorough / plan-first / architect / warroom /
+chief / venture). The LEAD's launch briefing carries the active mode's procedure; a WORKER's task
+envelope carries any reply rules that apply to it (checklists, evidence packs, critique formats)
+-- **the envelope always wins over this document**. The core pane ("control tower") shows each
+agent's live state (`working <age>`; `late-work` = still visibly producing past its deadline --
+let it finish), recent tasks, and the active mode; when your assumption and the tower disagree,
+trust the tower. A typed `[MKCREW] ...` line appearing in a pane is the daemon talking (an
+mk-done reminder, a wake ping, a posture update) -- act on it.
 <!-- MKCREW:end -->
 """
 

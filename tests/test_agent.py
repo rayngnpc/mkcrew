@@ -386,3 +386,30 @@ def test_write_launch_resolves_bare_provider_to_default_account(tmp_path, monkey
     p2 = agent.write_launch_cmd("acctest2", "claude-opus-4-8", tmp_path, provider="claude")
     t2 = p2.read_text(encoding="utf-8")
     assert "claudew" not in t2 and "\nclaude --permission-mode" in t2.replace("\r\n", "\n")
+
+
+
+def test_crew_briefing_covers_current_operations(tmp_path):
+    """The shared briefing (CLAUDE.md + AGENTS.md merge) must know the CURRENT cockpit -- it was a
+    15-line fossil predating the modes, mk stats/trace, the BLOCKED protocol and evidence packs.
+    It stays background mechanics: the envelope-wins rule is stated explicitly so it can never
+    collide with a mode clause or task contract."""
+    p = agent.ensure_project_claude_md(tmp_path)
+    text = p.read_text(encoding="utf-8")
+    for marker in ("mk stats", "mk trace", "mk pend", "mk mode", "BLOCKED", "self-audit",
+                   "envelope always wins", "core mode", "late-work", "only completion signal"):
+        assert marker in text, f"briefing missing '{marker}'"
+    a = agent.ensure_project_agents_md(tmp_path)
+    assert a.read_text(encoding="utf-8") .count("mk stats") >= 1     # non-claude CLIs get the same
+
+
+def test_worker_skill_installed_alongside_lead_skills(tmp_path, monkeypatch):
+    """mkcrew-worker: the worker counterpart to the five lead-centric skills -- installed to
+    .claude/skills like the rest, carrying the lifecycle + BLOCKED protocol + envelope-wins rule."""
+    from mkcrew import cli
+    paths = cli.install_skills(tmp_path)
+    ws = [p for p in paths if "mkcrew-worker" in str(p)]
+    assert len(ws) == 1 and ws[0].exists()
+    text = ws[0].read_text(encoding="utf-8")
+    assert "mk-done" in text and "BLOCKED" in text and "envelope wins" in text
+    assert "never weaken a check" in text.lower() or "Never weaken a check" in text

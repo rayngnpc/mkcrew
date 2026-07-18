@@ -10,6 +10,7 @@ from mkcrew.cli import (
 
 EXPECTED_SKILLS = {
     "task-router",
+        "mkcrew-worker",
     "safe-agent-delegation",
     "senior-developer-loop",
     "team-self-improvement",
@@ -21,7 +22,7 @@ EXPECTED_SKILLS = {
 # install_skills
 # ---------------------------------------------------------------------------
 
-def test_install_skills_creates_all_five(tmp_path):
+def test_install_skills_creates_all_six(tmp_path):
     """install_skills writes all 5 SKILL.md files under <project>/.claude/skills/."""
     install_skills(tmp_path)
     for name in EXPECTED_SKILLS:
@@ -29,10 +30,10 @@ def test_install_skills_creates_all_five(tmp_path):
         assert p.exists(), f"missing skill: {name}"
 
 
-def test_install_skills_returns_five_paths(tmp_path):
+def test_install_skills_returns_six_paths(tmp_path):
     """install_skills returns exactly 5 Path objects."""
     installed = install_skills(tmp_path)
-    assert len(installed) == 5
+    assert len(installed) == 6
 
 
 def test_install_skills_paths_match_names(tmp_path):
@@ -175,7 +176,7 @@ def test_scaffold_is_idempotent(tmp_path):
 # _SKILL_NAMES constant
 # ---------------------------------------------------------------------------
 
-def test_skill_names_constant_has_all_five():
+def test_skill_names_constant_has_all_six():
     """The _SKILL_NAMES list must contain exactly the 5 expected skill names."""
     assert set(_SKILL_NAMES) == EXPECTED_SKILLS
-    assert len(_SKILL_NAMES) == 5
+    assert len(_SKILL_NAMES) == 6
