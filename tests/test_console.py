@@ -24,12 +24,15 @@ def test_set_console_font_is_safe_and_returns_bool():
     assert isinstance(console.set_console_font(12), bool)
 
 
-def _fake_windll(monkeypatch, active_face_fn, set_ok=True):
+def _fake_windll(monkeypatch, active_face_fn, set_ok=True, zoomed=False, hwnd=100, show_calls=None):
     calls = []
 
     class _K32:
         def GetStdHandle(self, n):
             return 42
+
+        def GetConsoleWindow(self):
+            return hwnd
 
         def SetCurrentConsoleFontEx(self, handle, max_win, info_ref):
             face = info_ref._obj.FaceName
@@ -42,7 +45,15 @@ def _fake_windll(monkeypatch, active_face_fn, set_ok=True):
             info2.FaceName = active_face_fn(calls[-1][3])
             return True
 
-    fake = type("W", (), {"kernel32": _K32()})()
+    class _U32:
+        def IsZoomed(self, h):
+            return bool(zoomed)
+
+        def ShowWindow(self, h, cmd):
+            if show_calls is not None:
+                show_calls.append((h, cmd))
+
+    fake = type("W", (), {"kernel32": _K32(), "user32": _U32()})()
     monkeypatch.setattr(console.ctypes, "windll", fake, raising=False)
     return calls
 
@@ -69,3 +80,24 @@ def test_set_console_font_returns_false_when_set_fails(monkeypatch):
 def test_set_console_font_returns_false_without_windll(monkeypatch):
     monkeypatch.delattr(console.ctypes, "windll", raising=False)
     assert console.set_console_font(12) is False
+
+
+def test_set_console_font_refits_maximized_window(monkeypatch):
+    shows = []
+    _fake_windll(monkeypatch, lambda req: req, zoomed=True, hwnd=77, show_calls=shows)
+    assert console.set_console_font(12) is True
+    assert shows == [(77, 9), (77, 3)]
+
+
+def test_set_console_font_skips_refit_when_not_maximized(monkeypatch):
+    shows = []
+    _fake_windll(monkeypatch, lambda req: req, zoomed=False, hwnd=77, show_calls=shows)
+    assert console.set_console_font(12) is True
+    assert shows == []
+
+
+def test_set_console_font_skips_refit_when_face_rejected(monkeypatch):
+    shows = []
+    _fake_windll(monkeypatch, lambda req: "Other", zoomed=True, hwnd=77, show_calls=shows)
+    assert console.set_console_font(12) is False
+    assert shows == []

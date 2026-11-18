@@ -3,6 +3,112 @@ import pytest
 import urllib.error
 from mkcrew import cli
 
+
+class _StartupPromptMux:
+    def __init__(self, screens):
+        self.screens = screens
+        self.index = 0
+        self.events = []
+
+    def capture(self, pane):
+        self.events.append(("capture", pane))
+        screen = self.screens[min(self.index, len(self.screens) - 1)]
+        self.index += 1
+        return screen
+
+    def _run(self, *args):
+        self.events.append(args)
+
+    def send_enter(self, pane):
+        self.events.append(("enter", pane))
+
+
+_TRUST_NO = "Accessingworkspace:\nC:\\mkcrew-vmtest\\claudetest\nQuicksafetycheck:Isthisaprojectyoucreatedoroneyoutrust?\n❯No,exit\nYes,Itrustthisfolder\nEntertoconfirm"
+_TRUST_YES = _TRUST_NO.replace("❯No,exit\nYes,Itrustthisfolder", "No,exit\n❯Yes,Itrustthisfolder")
+_BYPASS_NO = "BypassPermissionswarning\n❯No,exit\nYes,Iaccept\nEntertoconfirm"
+_BYPASS_YES = _BYPASS_NO.replace("❯No,exit\nYes,Iaccept", "No,exit\n❯Yes,Iaccept")
+
+
+@pytest.mark.parametrize("screen", [
+    "Claude Code\n❯ Type your message\nTip: use /resume to continue a conversation",
+    "> Type your message or @path/to/file\nTip: allow access to files",
+])
+def test_startup_normal_repl_with_tip_does_not_send_keys(screen):
+    mux = _StartupPromptMux([screen])
+    assert cli._answer_startup_prompts(mux, "%1", attempts=3, interval=0)
+    assert not any(e[0] in ("enter", "send-keys") for e in mux.events)
+
+
+@pytest.mark.parametrize("screen", [
+    "Tip: continue here\n\n❯No,exit\nCancel\nEnter to confirm",
+    "❯No,exit\nitem1\nitem2\nitem3\nitem4\nYes, I accept\nEnter to confirm",
+    "❯No,exit\nCancel\nEnter to confirm\nYes, I accept",
+])
+def test_startup_ignores_affirmative_outside_option_block(screen):
+    mux = _StartupPromptMux([screen])
+    assert not cli._answer_startup_prompts(mux, "%1", attempts=3, interval=0)
+    assert not any(e[0] in ("enter", "send-keys") for e in mux.events)
+
+
+@pytest.mark.parametrize("hint", ["Enter to confirm", "Press Enter", "Esc to cancel", "Esc to exit"])
+def test_startup_dialog_hint_variants_are_recognized(hint):
+    no = f">No,exit\nYes,Iaccept\n{hint}"
+    yes = f"No,exit\n>Yes,Iaccept\n{hint}"
+    mux = _StartupPromptMux([no, yes, "ready"])
+    assert cli._answer_startup_prompts(mux, "%1", attempts=3, interval=0)
+    assert [e for e in mux.events if e[0] != "capture"] == [("send-keys", "-t", "%1", "Down"), ("enter", "%1")]
+
+
+def test_startup_trust_moves_from_no_and_recaptures_before_enter():
+    mux = _StartupPromptMux([_TRUST_NO, _TRUST_YES, "ready"])
+    assert cli._answer_startup_prompts(mux, "%1", attempts=3, interval=0)
+    assert mux.events == [("capture", "%1"), ("send-keys", "-t", "%1", "Down"),
+                          ("capture", "%1"), ("enter", "%1"), ("capture", "%1")]
+
+
+def test_startup_trust_yes_already_selected():
+    mux = _StartupPromptMux([_TRUST_YES, "ready"])
+    assert cli._answer_startup_prompts(mux, "%1", attempts=2, interval=0)
+    assert [e for e in mux.events if e[0] != "capture"] == [("enter", "%1")]
+
+
+def test_startup_trust_then_bypass_permissions_are_both_answered():
+    mux = _StartupPromptMux([_TRUST_NO, _TRUST_YES, _BYPASS_NO, _BYPASS_YES, "ready"])
+    assert cli._answer_startup_prompts(mux, "%1", attempts=5, interval=0)
+    assert [e for e in mux.events if e[0] != "capture"] == [
+        ("send-keys", "-t", "%1", "Down"), ("enter", "%1"),
+        ("send-keys", "-t", "%1", "Down"), ("enter", "%1")]
+
+
+@pytest.mark.parametrize("screen", ["❯No,exit\nMaybe\nEnter to confirm", "❯No\nEnter to confirm", _TRUST_NO,
+                                    "Proceed with this action?\n❯No, exit\nCancel\nEnter to confirm",
+                                    "No, exit\nYes, I trust this folder\nEnter to confirm"])
+def test_startup_missing_or_unreachable_yes_never_enters(screen):
+    mux = _StartupPromptMux([screen])
+    assert not cli._answer_startup_prompts(mux, "%1", attempts=9, interval=0)
+    assert not any(e[0] == "enter" for e in mux.events)
+    assert sum(e[0] == "send-keys" for e in mux.events) <= 6
+
+
+def test_startup_unchanged_affirmative_is_not_confirmed_twice():
+    mux = _StartupPromptMux([_TRUST_YES])
+    assert not cli._answer_startup_prompts(mux, "%1", attempts=4, interval=0)
+    assert [e for e in mux.events if e[0] == "enter"] == [("enter", "%1")]
+
+
+def test_startup_no_prompt_never_enters():
+    mux = _StartupPromptMux(["ready"])
+    assert cli._answer_startup_prompts(mux, "%1", attempts=3, interval=0)
+    assert not any(e[0] in ("enter", "send-keys") for e in mux.events)
+
+
+def test_startup_spaced_capture_uses_up_for_affirmative_above():
+    no = "│ Yes, I trust this folder\n│ ❯ No, exit\nPress Enter to confirm"
+    yes = "│ ❯ Yes, I trust this folder\n│   No, exit\nPress Enter to confirm"
+    mux = _StartupPromptMux([no, yes, "ready"])
+    assert cli._answer_startup_prompts(mux, "%1", attempts=3, interval=0)
+    assert [e for e in mux.events if e[0] != "capture"] == [("send-keys", "-t", "%1", "Up"), ("enter", "%1")]
+
 def test_dispatch_table_has_core_commands():
     assert {"init", "start", "attach", "kill", "panic"}.issubset(cli.COMMANDS.keys())
 
@@ -431,7 +537,8 @@ def test_cmd_start_fresh_clears_sessions(monkeypatch, tmp_path):
     assert cleared["hit"] is True
 
 
-def test_cmd_start_skips_bootstrap_for_resumed_agents(monkeypatch, tmp_path):
+@pytest.mark.parametrize("late_negative", [False, True])
+def test_cmd_start_skips_bootstrap_for_resumed_agents(monkeypatch, tmp_path, late_negative, capsys):
     """Fresh agents get their bootstrap prompt; resumed agents do not."""
     from mkcrew import cli, layouts, teamconfig, sessions, config as _cfg, agent as _agent
     monkeypatch.setattr(_agent, "ensure_project_hook", lambda p: None)
@@ -455,19 +562,27 @@ def test_cmd_start_skips_bootstrap_for_resumed_agents(monkeypatch, tmp_path):
     monkeypatch.setattr(layouts, "get",
                         lambda name: (lambda mux, team, project, register, session: {"main": "%1", "planner": "%2"}))
     sent = []
+    stage = {"late": False}
+    def capture(pane):
+        return ("❯No,exit\nMaybe\nEnter to confirm" if late_negative and stage["late"] and pane == "%1"
+                else "Claude Code\n❯ Type your message\nTip: use /resume to continue a conversation")
+    def sleep(seconds):
+        if seconds == 3:
+            stage["late"] = True
     fake_mux = type("M", (), {
         "kill_server": lambda self: None,
-        "capture": lambda self, p: "trust",         # trust-poll matches immediately, no spin
+        "capture": lambda self, p: capture(p),
         "send_enter": lambda self, p: None,
         "send_line": lambda self, p, t: sent.append(p),
         "set_option": lambda self, n, v: None,       # cmd_start now calls apply_chrome(mux)
         "bind_key": lambda self, key, *cmd: None,     # apply_chrome binds Ctrl-b A -> add-workspace
     })()
     monkeypatch.setattr(cli, "PsmuxBackend", lambda: fake_mux)
-    monkeypatch.setattr(cli.time, "sleep", lambda *a: None)
+    monkeypatch.setattr(cli.time, "sleep", sleep)
     cli.cmd_start(["--no-attach"])
-    assert "%1" in sent          # main (fresh) bootstrapped
+    assert ("%1" in sent) is not late_negative  # a late negative choice must not receive bootstrap Enter
     assert "%2" not in sent      # planner (resumed) NOT bootstrapped
+    assert ("startup prompt unresolved for main" in capsys.readouterr().out) is late_negative
 
 
 def test_cmd_start_resumes_non_claude_main_on_restart(monkeypatch, tmp_path):

@@ -69,6 +69,12 @@ def set_console_font(height):
                 info2 = _FONTINFOEX()
                 info2.cbSize = ctypes.sizeof(_FONTINFOEX)
                 if k.GetCurrentConsoleFontEx(handle, False, ctypes.byref(info2)) and info2.FaceName == face:
+                    # Re-fit maximized conhost: it keeps the old grid after a font change until resized.
+                    user32 = ctypes.windll.user32
+                    hwnd = k.GetConsoleWindow()
+                    if hwnd and user32.IsZoomed(hwnd):
+                        user32.ShowWindow(hwnd, 9)   # SW_RESTORE
+                        user32.ShowWindow(hwnd, 3)   # SW_MAXIMIZE
                     return True
         return False
     except Exception:

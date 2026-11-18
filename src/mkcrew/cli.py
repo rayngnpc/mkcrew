@@ -300,6 +300,66 @@ def _clear_stale_daemon_files() -> None:
     config.pid_file().unlink(missing_ok=True)
 
 
+def _answer_startup_prompts(mux, pane, attempts=16, interval=0.5):
+    """Confirm only a visibly selected affirmative; return False while a choice remains unresolved."""
+    affirmative = ("yes", "itrustthisfolder", "iaccept", "allow", "continue", "proceed")
+    hints = ("entertoconfirm", "pressenter", "esctocancel", "esctoexit")
+    borders = "│┃┆┊┌┐└┘├┤┬┴┼─━╭╮╰╯║╔╗╚╝╠╣╦╩╬═"
+    last_answered = None
+    unresolved = False
+    moves = 0
+    for attempt in range(attempts):
+        try:
+            screen = mux.capture(pane)
+        except (OSError, subprocess.SubprocessError):
+            return False
+        lines = ["".join(c for c in line.lower() if not c.isspace()).lstrip(borders)
+                 for line in screen.splitlines()]
+        hint_lines = [i for i, line in enumerate(lines) if any(hint in line for hint in hints)]
+        if not hint_lines:
+            unresolved = False
+            last_answered = None
+            if attempt + 1 < attempts and interval:
+                time.sleep(interval)
+            continue
+        markers = [i for i, line in enumerate(lines)
+                   if i not in hint_lines and line.startswith(("❯", ">"))]
+        selected = min(markers, key=lambda i: min(abs(i - hint) for hint in hint_lines)) if markers else None
+        block = []
+        if selected is not None:
+            block.append(selected)
+            for step in (-1, 1):
+                for distance in range(1, 5):
+                    i = selected + step * distance
+                    if i < 0 or i >= len(lines) or not lines[i] or i in hint_lines:
+                        break
+                    block.append(i)
+        choices = [i for i in block if any(word in lines[i].lstrip("❯>") for word in affirmative)
+                   and ("?" not in lines[i] or lines[i].lstrip("❯>").startswith(affirmative))]
+        if selected is not None and choices:
+            unresolved = True
+            if selected in choices:
+                if screen != last_answered:
+                    try:
+                        mux.send_enter(pane)
+                    except (OSError, subprocess.SubprocessError):
+                        return False
+                    last_answered = screen
+                    moves = 0
+            elif moves < 6:
+                target = min((abs(i - selected), i) for i in choices)[1]
+                try:
+                    mux._run("send-keys", "-t", pane, "Down" if target > selected else "Up")
+                except (OSError, subprocess.SubprocessError):
+                    return False
+                moves += 1
+        else:
+            unresolved = True
+        if attempt + 1 < attempts and interval:
+            time.sleep(interval)
+    return not unresolved
+
+
 def cmd_start(argv):
     project = _project_dir()
     agent.ensure_project_hook(project)
@@ -406,28 +466,9 @@ def cmd_start(argv):
     if name and hasattr(mux, "rename_window"):               # + label the primary window tab with the workspace name
         mux.rename_window(f"{SESSION}:0", name)
 
-    # 3d: poll each pane for the folder-trust prompt; send Enter when seen (best-effort)
-    _TRUST_KEYWORDS = ("trust", "Do you want to proceed", "Allow", "yes/no")
-    _POLL_SECS = 8     # claude shows folder-trust within ~2s; don't black-screen 30s/pane
-    _POLL_INTERVAL = 0.5
+    # 3d: only confirm a visibly selected affirmative; keep watching for follow-up prompts.
     for pid in panes.values():
-        deadline = time.monotonic() + _POLL_SECS
-        sent = False
-        while time.monotonic() < deadline:
-            try:
-                content = mux.capture(pid)
-                if any(kw.lower() in content.lower() for kw in _TRUST_KEYWORDS):
-                    mux.send_enter(pid)
-                    sent = True
-                    break
-            except Exception:
-                pass
-            time.sleep(_POLL_INTERVAL)
-        if not sent:
-            try:
-                mux.send_enter(pid)  # fallback: send Enter after timeout
-            except Exception:
-                pass
+        _answer_startup_prompts(mux, pid)
 
     # Give the REPLs a moment to finish booting before injecting prompts
     time.sleep(3)
@@ -438,15 +479,22 @@ def cmd_start(argv):
     if "main" in panes:
         # frozen: agents call `mk` via the shim on their PATH (mk.exe doesn't exist next to MKCREW.exe)
         mk_exe = "mk" if frozen.is_frozen() else str(Path(sys.executable).parent / "mk.exe").replace("\\", "/")
-        if "main" in fresh_roles:
-            # provider-aware: a non-claude main skips the claude-only task-router/senior-dev skills line
-            mux.send_line(panes["main"], prompts.lead_prompt(mk_exe, team, mode,
-                                                             provider=role_provider.get("main", "claude"),
-                                                             name=name))
-        elif changes:
-            mux.send_line(panes["main"], prompts.team_update_prompt(mk_exe, team, changes))
+        if "main" in fresh_roles or changes:
+            if _answer_startup_prompts(mux, panes["main"], attempts=4, interval=0.25):
+                if "main" in fresh_roles:
+                    # provider-aware: a non-claude main skips the claude-only task-router/senior-dev skills line
+                    mux.send_line(panes["main"], prompts.lead_prompt(mk_exe, team, mode,
+                                                                     provider=role_provider.get("main", "claude"),
+                                                                     name=name))
+                else:
+                    mux.send_line(panes["main"], prompts.team_update_prompt(mk_exe, team, changes))
+            else:
+                print("startup prompt unresolved for main; resolve it before sending instructions")
     if "planner" in panes and "planner" in fresh_roles:
-        mux.send_line(panes["planner"], prompts.PLANNER_PROMPT)
+        if _answer_startup_prompts(mux, panes["planner"], attempts=4, interval=0.25):
+            mux.send_line(panes["planner"], prompts.PLANNER_PROMPT)
+        else:
+            print("startup prompt unresolved for planner; resolve it before sending instructions")
     config.cockpit_project_file().write_text(str(project), encoding="utf-8")   # who owns the live cockpit
     _write_cockpit_lock(project, getattr(proc, "pid", None))                   # FIX #3: per-workspace liveness lock
     if "--no-attach" in argv:                  # Studio / scripts drive their own attach
