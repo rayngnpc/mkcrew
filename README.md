@@ -1,18 +1,25 @@
 <div align="center">
 
-# ⬢ MKCREW
+<img src="assets/mkcrew.png" alt="MKCREW logo" width="96" height="96">
 
-### Your AI coding crew, in one Windows terminal.
+# MKCREW
+
+**Your AI coding crew, in one Windows terminal.**
 
 Run a **team** of real agent CLIs — **Claude Code, Codex, opencode, Antigravity** — side by side in a
 native-Windows cockpit. A **lead** delegates, **workers** build, and an event-sourced **control tower**
 shows every job live.
 
-[![Windows](https://img.shields.io/badge/Windows-native-0078D4?logo=gitforwindows&logoColor=white)](#-install)
-[![No WSL](https://img.shields.io/badge/WSL-not%20required-2ea44f)](#-faq)
-[![PowerShell](https://img.shields.io/badge/PowerShell-5.1+-5391FE?logo=powershell&logoColor=white)](#-install)
-[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](#-install)
-[![psmux](https://img.shields.io/badge/psmux-3.3.6--mk-6f42c1)](https://github.com/rayngnpc/psmux-mk)
+[![Download MKCREW.exe](https://img.shields.io/badge/Download-MKCREW.exe-2ea44f?style=for-the-badge&logo=github&logoColor=white)](https://github.com/rayngnpc/mkcrew/releases/latest)
+[![Install with one command](https://img.shields.io/badge/Install-one%20command-1f6feb?style=for-the-badge&logo=uv&logoColor=white)](#-install)
+
+[![Latest release](https://img.shields.io/github/v/release/rayngnpc/mkcrew?style=flat-square&labelColor=0d1117&color=1f6feb)](https://github.com/rayngnpc/mkcrew/releases/latest)
+[![Total downloads](https://img.shields.io/github/downloads/rayngnpc/mkcrew/total?style=flat-square&labelColor=0d1117&color=2ea44f)](https://github.com/rayngnpc/mkcrew/releases)
+[![Windows 10 | 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square&labelColor=0d1117)](#-install)
+[![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&labelColor=0d1117&logo=python&logoColor=white)](#-install)
+[![PowerShell 5.1+](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE?style=flat-square&labelColor=0d1117)](#-install)
+[![psmux fork 3.3.6-mk](https://img.shields.io/badge/psmux%20fork-3.3.6--mk-6f42c1?style=flat-square&labelColor=0d1117&logo=rust&logoColor=white)](https://github.com/rayngnpc/psmux-mk)
+[![WSL not required](https://img.shields.io/badge/WSL-not%20required-2ea44f?style=flat-square&labelColor=0d1117)](#-faq)
 
 **[Install](#-install)** · **[Quickstart](#-quickstart)** · **[How it works](#-how-it-works)** ·
 **[Commands](#-commands)** · **[FAQ](#-faq)**
@@ -29,7 +36,7 @@ shows every job live.
 │   > mk ask worker2         │  worker2 · claude                          │
 │     "fix the tests"        │  working: fix #12                          │
 ├────────────────────────────┤                                            │
-│   ⬢ MKCREW tower           │                                            │
+│   ● MKCREW tower           │                                            │
 │   TEAM · TASKS             │                                            │
 └────────────────────────────┴────────────────────────────────────────────┘
 ```
@@ -220,6 +227,48 @@ show UAC is installing Node via winget — and it asks first.
 
 No. Panes get per-pane identity and sessions. When Codex, OpenCode, or Antigravity is shared by multiple
 seats, MKCREW starts those seats fresh rather than resuming the same last conversation in each pane.
+</details>
+
+<details>
+<summary><b>Can a seat use a second account (a work login)?</b></summary>
+
+Yes. Add an account to `%LOCALAPPDATA%\mkcrew\accounts.json` (or `accounts.json` under `MK_RUNTIME_ROOT` if set):
+
+```json
+[
+  {"label": "Claude", "provider": "claude", "bin": "claude", "default": true},
+  {"label": "Claude work", "provider": "claude", "bin": "C:\\Users\\you\\bin\\claudew.cmd"}
+]
+```
+
+For example, `claudew.cmd` can select a separate login and forward MKCREW's arguments:
+
+```bat
+@echo off
+set "CLAUDE_CONFIG_DIR=C:\Users\you\.claude-work"
+claude %*
+```
+
+The account appears in the seat's CLI menu. MKCREW still treats it as Claude or Codex and supplies that
+provider's flags and sessions. A wrapper typed as a raw custom command runs exactly as typed, without
+those provider features. Keep your usual login listed with `"default": true`: a plain `claude` seat
+runs the default account (or else the first one listed), so a file holding only the work account
+would move every plain seat onto it.
+</details>
+
+<details>
+<summary><b>A pane stopped taking my typing</b></summary>
+
+The pane may be in psmux copy mode after a scroll or click and may show a `[copy mode]` tag. Press
+`q` or `Esc` to leave copy mode, or press **Ctrl-b Esc** to unstick the active pane.
+</details>
+
+<details>
+<summary><b>Do I have to answer the agents' folder-trust prompts?</b></summary>
+
+`mk start` answers a recognized folder-trust prompt for the launched project by selecting its **Yes**
+option; it never confirms **No**. If it cannot safely identify and select an affirmative option, it
+leaves the prompt for you.
 </details>
 
 <details>
