@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mkcrew"
-version = "0.1.0"
+version = "0.2.0"
 description = "MKCREW — native-Windows event-sourced multi-agent CLI orchestrator on psmux"
 requires-python = ">=3.12"
 dependencies = ["textual>=0.80"]
@@ -22,7 +22,6 @@ mk-done = "mkcrew.done_cli:main"
 mk-verify-team = "mkcrew.verify:main"
 mk-tui = "mkcrew.tui:main"
 mk-core-view = "mkcrew.coreview:coreview_main"
-mk-files-view = "mkcrew.filesview:filesview_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
