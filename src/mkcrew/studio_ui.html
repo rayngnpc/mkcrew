@@ -1,1173 +1,1015 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
 <title>MKCREW Studio</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%230087ff' d='M12 2l8.66 5v10L12 22l-8.66-5V7z'/%3E%3C/svg%3E">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Saira+Condensed:wght@400;500;600;700;800&display=swap');
-
+/* MKCREW Studio. One file, no network: system fonts, inline icons, native <dialog> and form controls.
+   The page speaks the cockpit's own language. Sections are ruled like pane borders, and colour is a
+   signal, never a decoration: azure = identity and the one primary action, violet = the planner,
+   green = running, amber = caution, red = attention. Everything else is the reader's own text colour. */
+:root{
+  color-scheme:dark;
+  --bg:#0e1116; --raise:#161b23; --rule:#232a34; --rule-2:#333c49;
+  --tx:#e7eaef; --tx-2:#9aa4b2; --tx-3:#7c8694;
+  --azure:#4aa3ff; --on-azure:#04121f; --amber:#e3a23a; --green:#3fbf7f; --red:#f0716c; --violet:#a78bff;
+  --term:#0a0c10; --term-tx:#d9dde4; --term-dim:#7f8996; --term-rule:#3b4552;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",Ubuntu,Cantarell,sans-serif;
+  --mono:ui-monospace,"JetBrains Mono","Cascadia Code","SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
+}
+@media (prefers-color-scheme:light){
   :root{
-    /* BLUEPRINT HUD — deep-navy drafting ground, cyan line-art + soft glow, amber/lime accents.
-       Original variable NAMES are kept unchanged so every existing rule AND every inline
-       style/JS-generated style (which reference --text/--faint/--dim/--border2/etc.) still
-       resolves; only the VALUES + shapes change. New cy / am / lm tokens drive the HUD. */
-    --bg:#0a1628; --surface:#0d1e38; --surface2:#101f3a; --surface3:#15294a;
-    --border:rgba(53,224,255,.16); --border2:rgba(53,224,255,.34);
-    --text:#dcecff; --dim:#9ec1ea; --faint:#7e9fc8;
-    /* role / data accents (lead-dot, worker, reviewer, planner) */
-    --green:#35e0ff; --green-d:#16b9da; --blue:#5b8fff; --pink:#ff7bc4; --violet:#8b7bff;
-    --shadow:0 8px 30px rgba(0,0,0,.55);
-
-    /* cyan line-art ramp */
-    --cy:#35e0ff; --cy5:rgba(53,224,255,.5); --cy3:rgba(53,224,255,.3); --cy2:rgba(53,224,255,.2);
-    --cy15:rgba(53,224,255,.15); --cy08:rgba(53,224,255,.08); --cy04:rgba(53,224,255,.05);
-    /* amber (selected / launch) */
-    --am:#ffb14e; --am5:rgba(255,177,78,.5); --am3:rgba(255,177,78,.3); --am2:rgba(255,177,78,.2); --am08:rgba(255,177,78,.09);
-    /* lime (live / positive) */
-    --lm:#54ff9e; --lm4:rgba(84,255,158,.4);
-    /* blueprint grid line alphas — match the approved prototype (subtle) */
-    --grid:rgba(53,224,255,.02); --grid2:rgba(53,224,255,.007);
-
-    /* type — Saira Condensed = display/headings, JetBrains Mono = labels/data/body */
-    --serif:'JetBrains Mono','SFMono-Regular',Consolas,ui-monospace,monospace;
-    --head:'Saira Condensed','Arial Narrow','Oswald',sans-serif;
-    --mn:'JetBrains Mono','SFMono-Regular',Consolas,ui-monospace,monospace;
+    color-scheme:light;
+    --bg:#f5f6f8; --raise:#ffffff; --rule:#e0e4ea; --rule-2:#c9cfd8;
+    --tx:#14171b; --tx-2:#55606e; --tx-3:#6b7582;
+    --azure:#0b68cb; --on-azure:#ffffff; --amber:#955800; --green:#0f7d45; --red:#c23a35; --violet:#6240d6;
+    --term:#ffffff; --term-tx:#1c2026; --term-dim:#687280; --term-rule:#c2c8d1;
   }
-  *{box-sizing:border-box;margin:0}
-  body{
-    /* match the approved prototype: flat dark-navy ground + faint grid, NO radial glows */
-    background-color:var(--bg);
-    background-image:
-      linear-gradient(var(--grid) 1px, transparent 1px),
-      linear-gradient(90deg, var(--grid) 1px, transparent 1px),
-      linear-gradient(var(--grid2) 1px, transparent 1px),
-      linear-gradient(90deg, var(--grid2) 1px, transparent 1px);
-    background-size:80px 80px,80px 80px,16px 16px,16px 16px;
-    background-repeat:repeat;
-    background-attachment:fixed;
-    color:var(--text);font-family:var(--serif);font-size:13.5px;line-height:1.55;-webkit-font-smoothing:antialiased;
-    overflow-x:hidden}
-  /* outer blueprint drawing frame + corner registration crosshairs (pure-CSS overlay) */
-  body::before{
-    content:'';position:fixed;inset:10px;pointer-events:none;z-index:10;
-    border:1.5px solid rgba(53,224,255,.10);
-    background-image:
-      url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='26'%20height='26'%20viewBox='0%200%2026%2026'%20fill='none'%20stroke='%2335e0ff'%20stroke-opacity='.42'%20stroke-width='1'%3E%3Ccircle%20cx='13'%20cy='13'%20r='7.5'/%3E%3Cline%20x1='13'%20y1='1'%20x2='13'%20y2='25'/%3E%3Cline%20x1='1'%20y1='13'%20x2='25'%20y2='13'/%3E%3C/svg%3E"),
-      url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='26'%20height='26'%20viewBox='0%200%2026%2026'%20fill='none'%20stroke='%2335e0ff'%20stroke-opacity='.42'%20stroke-width='1'%3E%3Ccircle%20cx='13'%20cy='13'%20r='7.5'/%3E%3Cline%20x1='13'%20y1='1'%20x2='13'%20y2='25'/%3E%3Cline%20x1='1'%20y1='13'%20x2='25'%20y2='13'/%3E%3C/svg%3E"),
-      url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='26'%20height='26'%20viewBox='0%200%2026%2026'%20fill='none'%20stroke='%2335e0ff'%20stroke-opacity='.42'%20stroke-width='1'%3E%3Ccircle%20cx='13'%20cy='13'%20r='7.5'/%3E%3Cline%20x1='13'%20y1='1'%20x2='13'%20y2='25'/%3E%3Cline%20x1='1'%20y1='13'%20x2='25'%20y2='13'/%3E%3C/svg%3E"),
-      url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='26'%20height='26'%20viewBox='0%200%2026%2026'%20fill='none'%20stroke='%2335e0ff'%20stroke-opacity='.42'%20stroke-width='1'%3E%3Ccircle%20cx='13'%20cy='13'%20r='7.5'/%3E%3Cline%20x1='13'%20y1='1'%20x2='13'%20y2='25'/%3E%3Cline%20x1='1'%20y1='13'%20x2='25'%20y2='13'/%3E%3C/svg%3E");
-    background-repeat:no-repeat;
-    background-position:left 7px top 7px, right 7px top 7px, left 7px bottom 7px, right 7px bottom 7px;
-    background-size:26px 26px}
-  /* very subtle full-page scanlines */
-  body::after{
-    content:'';position:fixed;inset:0;pointer-events:none;z-index:9;
-    background:repeating-linear-gradient(0deg,transparent 0,transparent 3px,rgba(0,0,0,.05) 3px,rgba(0,0,0,.05) 4px)}
-  .mono{font-family:var(--mn)}
-  .i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;display:block}
-  .i-fill{width:15px;height:15px;fill:currentColor;stroke:none;display:inline-block;vertical-align:-2px}
-  .i-fill.star{width:12px;height:12px;color:var(--am)}
-  .app{max-width:1180px;margin:18px auto;padding:0 30px 140px;background:transparent;position:relative;z-index:1}
-  header{display:flex;align-items:flex-end;gap:16px;padding:16px 0 14px;position:sticky;top:0;z-index:14;background:var(--bg);border-bottom:1px solid var(--cy15);box-shadow:0 10px 22px -14px rgba(0,0,0,.9)}
-  .logo{display:flex;align-items:center;gap:13px}
-  .mark{width:42px;height:42px;border-radius:0;background:var(--cy08);display:grid;place-items:center;font-weight:800;font-size:21px;color:var(--cy);font-family:var(--head);border:1px solid var(--cy);box-shadow:0 0 14px var(--cy3),inset 0 0 12px rgba(53,224,255,.07);text-shadow:0 0 12px var(--cy3);clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)}
-  .logo b{font-size:27px;font-family:var(--head);text-transform:uppercase;letter-spacing:.05em;font-weight:800;line-height:1.02;color:var(--cy);text-shadow:0 0 22px rgba(53,224,255,.5),0 0 44px rgba(53,224,255,.16)}
-  .logo b::after{content:"Compose and launch your AI coding team";display:block;font-family:var(--mn);font-style:normal;font-weight:400;font-size:9.5px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase;margin-top:4px}
-  .logo .sub{color:var(--dim);font-size:11px;font-family:var(--mn);margin-top:1px;letter-spacing:.04em}
-  .clis{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
-  .pill{display:flex;align-items:center;gap:7px;background:var(--cy04);border:1px solid var(--cy15);border-radius:0;padding:5px 11px;font-size:11px;color:var(--dim);font-family:var(--mn);letter-spacing:.04em}
-  .dot{width:7px;height:7px;border-radius:50%;background:var(--faint)}
-  .pill.on{color:var(--text);border-color:var(--cy15)}.pill.on .dot{background:var(--lm);box-shadow:0 0 7px var(--lm),0 0 14px var(--lm4);animation:dotPulse 2.4s ease-in-out infinite}
-  .pill.off{opacity:.55;border-style:dashed;border-color:var(--cy15)}.pill.off .dot{background:var(--faint)}
-  h2.sec{font-size:15px;letter-spacing:.18em;text-transform:uppercase;color:var(--cy);margin:24px 0 13px;display:flex;align-items:center;gap:11px;font-family:var(--head);font-weight:700;border-bottom:1px solid var(--cy15);padding-bottom:8px;text-shadow:0 0 16px rgba(53,224,255,.3)}
-  h2.sec .n{width:24px;height:22px;border-radius:0;background:var(--cy08);border:1px solid var(--cy3);display:grid;place-items:center;color:var(--cy);font-size:11px;font-family:var(--head);font-weight:700;letter-spacing:.08em;clip-path:polygon(0 0,calc(100% - 6px) 0,100% 6px,100% 100%,6px 100%,0 calc(100% - 6px))}
-  .grid{display:grid;grid-template-columns:1fr 290px;gap:22px;align-items:start}
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;flex-direction:column;background:var(--bg);color:var(--tx);
+  font:14px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+h1,h2,p,ol,ul{margin:0;padding:0}
+ol,ul{list-style:none}
+button,input,select,textarea{font:inherit;color:inherit}
+code,kbd,.mono{font-family:var(--mono);font-size:.93em}
+:focus-visible{outline:2px solid var(--azure);outline-offset:2px}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 
-  /* ---- HUD panel: dark surface + thin cyan rule + 4-corner bracket frame ---- */
-  .card{background:var(--surface);border:1px solid var(--cy15);border-radius:0;position:relative;box-shadow:0 4px 22px rgba(0,0,0,.5),inset 0 0 30px rgba(53,224,255,.012)}.pad{padding:16px}
-  .card::before{content:'';position:absolute;inset:0;pointer-events:none;z-index:2;background:
-    linear-gradient(var(--cy),var(--cy)) top left/13px 1.5px no-repeat,
-    linear-gradient(var(--cy),var(--cy)) top left/1.5px 13px no-repeat,
-    linear-gradient(var(--cy),var(--cy)) bottom right/13px 1.5px no-repeat,
-    linear-gradient(var(--cy),var(--cy)) bottom right/1.5px 13px no-repeat,
-    linear-gradient(var(--cy5),var(--cy5)) top right/13px 1.5px no-repeat,
-    linear-gradient(var(--cy5),var(--cy5)) top right/1.5px 13px no-repeat,
-    linear-gradient(var(--cy5),var(--cy5)) bottom left/13px 1.5px no-repeat,
-    linear-gradient(var(--cy5),var(--cy5)) bottom left/1.5px 13px no-repeat}
-  .stepper{display:flex;align-items:center;gap:14px}
-  .stepper .b{width:38px;height:38px;border-radius:0;background:var(--cy08);border:1px solid var(--cy3);color:var(--cy);font-size:19px;font-family:var(--mn);font-weight:400;cursor:pointer;display:grid;place-items:center;clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px));transition:.16s}
-  .stepper .b:hover{background:var(--cy2);color:#fff;box-shadow:0 0 14px var(--cy3)}
-  .stepper .val{font-size:40px;font-weight:800;min-width:34px;text-align:center;font-family:var(--head);color:var(--cy);line-height:1;letter-spacing:-.01em;font-variant-numeric:tabular-nums;text-shadow:0 0 24px rgba(53,224,255,.45),0 0 50px rgba(53,224,255,.16)}.stepper .hint{color:var(--faint);font-size:12px;font-family:var(--mn);letter-spacing:.02em}
-  .roster{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
-  .chip{display:flex;align-items:center;gap:9px;background:var(--cy04);border:1px solid var(--cy15);border-radius:0;padding:7px 12px;font-size:13px;font-family:var(--head);font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text);transition:.16s}
-  .chip:hover{border-color:var(--cy3);background:var(--cy08)}
-  .chip .av{width:9px;height:9px;border-radius:50%}
-  .av.lead{background:var(--green);box-shadow:0 0 8px var(--cy3)}.av.work{background:var(--blue);box-shadow:0 0 7px rgba(91,143,255,.4)}.av.rev{background:var(--pink);box-shadow:0 0 7px rgba(255,123,196,.4)}.av.plan{background:var(--violet);box-shadow:0 0 7px rgba(139,123,255,.4)}
-  .chip .prov{color:var(--dim);font-size:10px;border-left:1px solid var(--cy15);padding-left:9px;font-family:var(--mn);text-transform:uppercase;letter-spacing:.06em;font-weight:400}
+/* controls */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:7px 14px;border:1px solid var(--rule-2);
+  border-radius:6px;background:none;font-weight:500;white-space:nowrap;cursor:pointer;transition:background .12s,border-color .12s}
+.btn:hover:not(:disabled){background:var(--raise);border-color:var(--tx-3)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.sm{padding:4px 11px;font-size:13px}
+.btn.sq{width:28px;height:28px;padding:0;font-size:16px;line-height:1}
+.btn.quiet{border-color:transparent;color:var(--tx-2)}
+.btn.danger{color:var(--red)}
+.btn.primary{background:var(--azure);border-color:var(--azure);color:var(--on-azure);font-weight:650}
+.btn.primary:hover:not(:disabled){background:var(--azure);border-color:var(--azure);filter:brightness(1.08)}
+.btn kbd{font-size:11.5px;opacity:.72}
+select,input[type=text],textarea{min-width:0;width:100%;padding:6px 9px;border:1px solid var(--rule-2);border-radius:6px;
+  background:var(--bg);font-size:13px}
+select{appearance:none;padding-right:26px;text-overflow:ellipsis;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%238a94a2' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 8px center;background-size:11px}
+select:hover,input[type=text]:hover{border-color:var(--tx-3)}
+select.mono,input.mono{font-family:var(--mono);font-size:12.5px}
+textarea{font-family:var(--mono);font-size:12.5px;line-height:1.5;resize:vertical}
+input[type=radio]{appearance:none;flex:none;width:14px;height:14px;margin:0;border:1.5px solid var(--tx-3);border-radius:50%;
+  background:none;cursor:pointer}
+input[type=radio]:checked{border-color:var(--azure);background:radial-gradient(var(--azure) 0 3.5px,transparent 4.2px)}
 
-  /* ---- mini-cockpit preview: a DARK embedded HUD screen with scanlines + scan sweep ---- */
-  .ck{background:#030810;border:1px solid var(--cy15);border-radius:0;overflow:hidden;display:flex;flex-direction:column;position:relative}
-  .ck::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:5;background:repeating-linear-gradient(0deg,transparent 0,transparent 2px,rgba(0,0,0,.10) 2px,rgba(0,0,0,.10) 3px)}
-  .ck::before{content:'';position:absolute;top:0;left:0;right:0;height:1.5px;z-index:6;pointer-events:none;background:linear-gradient(90deg,transparent,var(--cy5),transparent);animation:ckScan 5s linear infinite}
-  .ck-bar{display:flex;align-items:center;gap:4px;background:#060e1c;border-bottom:1px solid rgba(53,224,255,.1);padding:3px 6px;position:relative;z-index:7}
-  .ck-bar .bm{background:var(--cy);color:#03101c;border-radius:0;padding:1px 4px;font-weight:800;font-size:7px;box-shadow:0 0 6px var(--cy3)}
-  .ck-bar .bt{color:rgba(120,170,220,.6);padding:1px 4px;font-size:7.5px;border-radius:0}
-  .ck-bar .bt.on{background:rgba(53,224,255,.16);color:var(--cy)}
-  .ck-bar .br{margin-left:auto;color:rgba(84,255,158,.8);font-size:7.5px;letter-spacing:.04em}
-  .ck-body{flex:1;display:flex;flex-direction:column;gap:3px;padding:4px;min-height:0;position:relative;z-index:7}
-  .ck-row{display:flex;gap:3px;flex:1;min-height:0}
-  .ck-col{display:flex;flex-direction:column;gap:3px;min-width:0}
-  .cp{flex:1;border:1px solid rgba(53,224,255,.12);border-radius:0;background:#050c18;display:flex;align-items:center;justify-content:center;font-size:10.5px;color:rgba(120,170,220,.7);min-height:0;text-align:center;position:relative;font-family:var(--mn);letter-spacing:.06em;text-transform:uppercase}
-  .cp.lead{background:#071520;border-color:rgba(53,224,255,.32);color:rgba(120,200,255,.8)}
-  .cp.lead::after{content:'';position:absolute;top:3px;left:3px;width:4px;height:4px;border-radius:50%;background:var(--lm);box-shadow:0 0 5px var(--lm);animation:dotPulse 2s infinite}
-  .cp.core{background:#1c1405;border-color:var(--am3);color:rgba(255,177,78,.85)}
-  .cp.act{background:#0a1c30;border-color:rgba(53,224,255,.4);color:rgba(150,200,255,.9)}
-  .cp.zoom{position:absolute;inset:14%;z-index:8;background:#0a1c30;border-color:var(--cy);color:#cfeaff;box-shadow:0 6px 22px #000a,0 0 16px var(--cy3)}
+/* header */
+.top{display:flex;align-items:center;flex-wrap:wrap;gap:8px 24px;padding:11px 28px;border-bottom:1px solid var(--rule)}
+.brand{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:700;white-space:nowrap}
+.brand svg{flex:none;width:15px;height:15px;color:var(--azure)}
+.brand span{font-weight:400;color:var(--tx-2)}
+.where{display:flex;align-items:center;gap:6px 14px;flex:1 1 340px;min-width:0}
+#ws-name{flex:none;width:14ch;max-width:44vw;padding:3px 8px;border-color:var(--rule);background:none;font-size:15px;font-weight:650}
+#ws-name:hover{border-color:var(--tx-3)}
+#ws-name:focus{border-color:var(--azure);background:var(--raise);outline:none}
+.path{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left;
+  color:var(--tx-2);font:12.5px/1.6 var(--mono)}
 
-  .tpl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-  .tpl{background:rgba(13,30,56,.92);border:1px solid var(--cy15);border-radius:0;overflow:hidden;cursor:pointer;transition:transform .14s,box-shadow .14s,border-color .14s;position:relative}
-  .tpl::before{content:'';position:absolute;inset:0;pointer-events:none;z-index:3;background:
-    linear-gradient(var(--cy5),var(--cy5)) top left/11px 1.5px no-repeat,
-    linear-gradient(var(--cy5),var(--cy5)) top left/1.5px 11px no-repeat,
-    linear-gradient(var(--cy5),var(--cy5)) bottom right/11px 1.5px no-repeat,
-    linear-gradient(var(--cy5),var(--cy5)) bottom right/1.5px 11px no-repeat,
-    linear-gradient(var(--cy3),var(--cy3)) top right/11px 1.5px no-repeat,
-    linear-gradient(var(--cy3),var(--cy3)) top right/1.5px 11px no-repeat,
-    linear-gradient(var(--cy3),var(--cy3)) bottom left/11px 1.5px no-repeat,
-    linear-gradient(var(--cy3),var(--cy3)) bottom left/1.5px 11px no-repeat}
-  .tpl:hover{transform:translateY(-2px);border-color:var(--cy3);box-shadow:0 0 18px var(--cy15)}
-  .tpl.sel{border-color:var(--am);box-shadow:0 0 22px var(--am2)}
-  .tpl.sel::before{background:
-    linear-gradient(var(--am),var(--am)) top left/11px 1.5px no-repeat,
-    linear-gradient(var(--am),var(--am)) top left/1.5px 11px no-repeat,
-    linear-gradient(var(--am),var(--am)) bottom right/11px 1.5px no-repeat,
-    linear-gradient(var(--am),var(--am)) bottom right/1.5px 11px no-repeat,
-    linear-gradient(var(--am5),var(--am5)) top right/11px 1.5px no-repeat,
-    linear-gradient(var(--am5),var(--am5)) top right/1.5px 11px no-repeat,
-    linear-gradient(var(--am5),var(--am5)) bottom left/11px 1.5px no-repeat,
-    linear-gradient(var(--am5),var(--am5)) bottom left/1.5px 11px no-repeat}
-  .tpl.sel::after{content:'\2726';position:absolute;top:6px;right:9px;font-size:12px;color:var(--am);z-index:4;text-shadow:0 0 10px var(--am3)}
-  .tpl .ck{height:188px;border:0;border-bottom:1px solid var(--cy15);border-radius:0}
-  .tpl .tt{padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;background:transparent;position:relative;z-index:2}
-  .tpl .tt b{font-size:14px;font-family:var(--head);text-transform:uppercase;letter-spacing:.07em;color:var(--text);font-weight:700}.tpl.sel .tt b{color:var(--am)}.tpl .tt .tag{font-size:9px;color:var(--dim);border:1px solid var(--cy15);border-radius:0;padding:2px 7px;white-space:nowrap;font-family:var(--mn);text-transform:uppercase;letter-spacing:.05em}
-  .tpl .tt small{color:var(--dim);font-size:11px;display:block;font-weight:400;margin-top:3px;font-family:var(--mn);line-height:1.45}
-  .star{color:var(--am)}
-  .more{display:grid;place-items:center;color:var(--faint);min-height:160px;text-align:center;font-family:var(--mn);font-size:12px}
-  .tpl-group{grid-column:1/-1;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);font-weight:500;margin:10px 0 -3px;font-family:var(--mn);border-bottom:1px solid var(--cy15);padding-bottom:5px}
-  .tag.fit-best{color:var(--lm);border-color:var(--lm4)}
-  .tag.fit-ok{color:var(--cy);border-color:var(--cy3)}
-  .tag.fit-warn{color:var(--am);border-color:var(--am3)}
-  .tag.fit-dim{color:var(--faint)}
+/* the bench */
+main{flex:1;width:100%;max-width:1560px;margin:0 auto;padding:24px 28px 36px;
+  display:grid;grid-template-columns:minmax(0,1fr) clamp(400px,34vw,448px);gap:0 clamp(28px,3vw,44px);align-items:start}
+.col{display:grid;gap:32px;min-width:0}
+section{min-width:0}
+.hd{display:flex;align-items:center;gap:10px;min-height:28px;margin-bottom:14px}
+.hd::before{content:"";flex:none;width:14px;height:1px;background:var(--rule-2)}
+.hd h2{font-size:13.5px;font-weight:650;white-space:nowrap}
+.hd .fill{flex:1;height:1px;background:var(--rule-2)}
+.hd .aux{display:flex;align-items:center;gap:8px;color:var(--tx-2);font-size:12.5px;white-space:nowrap}
+.hint{margin-top:10px;color:var(--tx-2);font-size:12.5px}
+.hint:empty{display:none}
+.row{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.grow{flex:1}
 
-  .modes{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
-  .mode{background:rgba(13,30,56,.92);border:1px solid var(--cy15);border-radius:0;padding:15px 14px;cursor:pointer;transition:.16s;position:relative;overflow:hidden}
-  .mode::before{content:'';position:absolute;inset:0;pointer-events:none;z-index:2;background:
-    linear-gradient(var(--cy5),var(--cy5)) top left/10px 1.5px no-repeat,
-    linear-gradient(var(--cy5),var(--cy5)) top left/1.5px 10px no-repeat,
-    linear-gradient(var(--cy5),var(--cy5)) bottom right/10px 1.5px no-repeat,
-    linear-gradient(var(--cy5),var(--cy5)) bottom right/1.5px 10px no-repeat,
-    linear-gradient(var(--cy3),var(--cy3)) top right/10px 1.5px no-repeat,
-    linear-gradient(var(--cy3),var(--cy3)) top right/1.5px 10px no-repeat,
-    linear-gradient(var(--cy3),var(--cy3)) bottom left/10px 1.5px no-repeat,
-    linear-gradient(var(--cy3),var(--cy3)) bottom left/1.5px 10px no-repeat}
-  .mode:hover{border-color:var(--cy3);box-shadow:0 0 14px var(--cy15)}.mode.sel{border-color:var(--am);box-shadow:0 0 18px var(--am2)}
-  .mode.sel::before{background:
-    linear-gradient(var(--am),var(--am)) top left/10px 1.5px no-repeat,
-    linear-gradient(var(--am),var(--am)) top left/1.5px 10px no-repeat,
-    linear-gradient(var(--am),var(--am)) bottom right/10px 1.5px no-repeat,
-    linear-gradient(var(--am),var(--am)) bottom right/1.5px 10px no-repeat,
-    linear-gradient(var(--am5),var(--am5)) top right/10px 1.5px no-repeat,
-    linear-gradient(var(--am5),var(--am5)) top right/1.5px 10px no-repeat,
-    linear-gradient(var(--am5),var(--am5)) bottom left/10px 1.5px no-repeat,
-    linear-gradient(var(--am5),var(--am5)) bottom left/1.5px 10px no-repeat}
-  .mode .ic{width:32px;height:32px;display:grid;place-items:center;background:var(--cy08);border:1px solid var(--cy3);color:var(--cy);clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px))}.mode .ic .i{width:18px;height:18px}.mode.sel .ic{color:var(--am);background:var(--am08);border-color:var(--am3);box-shadow:0 0 10px var(--am2)}.mode b{display:block;margin:11px 0 4px;font-size:16px;font-family:var(--head);text-transform:uppercase;letter-spacing:.07em;color:var(--text);font-weight:700}.mode.sel b{color:var(--am)}.mode p{color:var(--dim);font-size:11.5px;line-height:1.45;font-family:var(--mn)}
-  .mode .when{margin-top:8px;padding-top:7px;border-top:1px dashed var(--cy15);color:var(--dim);font-size:11px;line-height:1.4;font-family:var(--mn)}
-  .mode .when span{display:block;color:var(--cy);font-family:var(--head);font-size:9.5px;text-transform:uppercase;letter-spacing:.14em;margin-bottom:2px}
-  .mode.sel .when span{color:var(--am)}
+/* cockpit preview: drawn the way the terminal draws it */
+.termwrap{container-type:inline-size}
+.term{overflow:hidden;border:1px solid var(--rule-2);border-radius:8px;background:var(--term);color:var(--term-tx);
+  font:11.5px/1.45 var(--mono)}
+.tbar{display:flex;align-items:center;gap:8px;padding:5px 10px 4px;white-space:nowrap;color:var(--term-dim)}
+.tbar .mark,.tw .mark{color:var(--azure)}
+.tbar .name{color:var(--term-tx);font-weight:700}
+.tbar .sep{color:var(--term-rule)}
+.tbar .tab.on{color:var(--term-tx);font-weight:700;text-decoration:underline;text-underline-offset:2px}
+.tbar .hints{margin-left:auto;overflow:hidden}
+.tbar .hints b{color:var(--term-tx)}
+.tbody{position:relative;aspect-ratio:2.1/1;max-height:min(46vh,520px)}
+.pn{position:absolute;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;margin:0;padding:0;
+  border:0;border-left:1px solid transparent;border-radius:0;background:none;text-align:left;font:inherit;color:inherit}
+button.pn{cursor:pointer}
+.pn.vl{border-left-color:var(--term-rule)}
+.pl{display:flex;align-items:center;flex:none;gap:6px;height:1.45em;white-space:nowrap}
+.pl::before{content:"";flex:none;width:10px;height:1px;background:var(--term-rule)}
+.pl::after{content:"";flex:1;min-width:6px;height:1px;background:var(--term-rule)}
+.pl b{font-weight:700}
+.pl b.lead,.tw .lead{color:var(--azure)}
+.pl b.plan,.tw .plan{color:var(--violet)}
+.pl .cli,.pl .dim{overflow:hidden;text-overflow:ellipsis;color:var(--term-dim)}
+.pn.on.vl{border-left-color:var(--azure)}
+.pn.on .pl::before,.pn.on .pl::after{background:var(--azure)}
+button.pn:hover .pb{background:color-mix(in srgb,var(--azure) 7%,transparent)}
+button.pn:focus-visible{outline-offset:-2px}
+.pb{flex:1;min-height:0;overflow:hidden;padding:5px 10px;color:var(--term-dim)}
+.pb.tw{padding-top:2px;padding-bottom:0}
+.tw [hidden]{display:none !important}
+.pb .note{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:12px/1.4 var(--sans)}
+.pb .note.w{visibility:hidden}
+.pn:hover .note.w,.pn.on .note.w{visibility:visible}
+.tw div{overflow:hidden;white-space:pre}
+.tw .h{display:flex;gap:1ch;color:var(--term-dim)}
+.tw .h b,.tw .tx{color:var(--term-tx)}
+.tw .h .n{margin-left:auto}
+.tw .h .m{margin-left:2ch}
+.files{display:flex;height:100%}
+.files span{flex:1;min-width:0;overflow:hidden;padding:0 8px;border-left:1px solid var(--term-rule);font:12px/1.4 var(--sans)}
+.files span:first-child{flex:.8;border-left:0;padding-left:0}
+.files span:last-child{flex:1.6}
+@container (max-width:700px){.tbar .hints{display:none}}
+@container (max-width:520px){.tbody{aspect-ratio:1.45/1}.term{font-size:10.5px}.pb .note{font-size:11px}}
 
-  .side h3{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--cy);margin:0 0 11px;font-family:var(--head);font-weight:700;border-bottom:1px solid var(--cy15);padding-bottom:6px;display:flex;align-items:center;gap:9px}
-  .prof{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:0;cursor:pointer;border:1px solid transparent;transition:.16s}
-  .prof:hover{background:var(--cy04);border-color:var(--cy15)}.prof.act{background:var(--cy08);border:1px solid var(--cy3)}
-  .prof .pic{width:28px;height:28px;border-radius:0;background:var(--cy08);border:1px solid var(--cy3);display:grid;place-items:center;color:var(--cy);clip-path:polygon(0 0,calc(100% - 7px) 0,100% 7px,100% 100%,7px 100%,0 calc(100% - 7px))}.prof .pic .i{width:15px;height:15px}
-  .prof .meta{font-size:13px;font-family:var(--head);font-weight:700;letter-spacing:.04em;color:var(--text)}.prof .meta small{display:block;color:var(--faint);font-size:10.5px;font-family:var(--mn);font-weight:400;letter-spacing:.02em;margin-top:2px;text-transform:none}
-  .row-btns{display:flex;gap:7px;margin-top:11px}
-  .gbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:var(--cy04);border:1px solid var(--cy15);color:var(--dim);border-radius:0;padding:8px;font-size:11px;cursor:pointer;font-family:var(--mn);letter-spacing:.03em;transition:.16s}.gbtn:hover{color:var(--cy);background:var(--cy08);border-color:var(--cy3)}.gbtn .i{width:14px;height:14px}
+/* crew */
+.stepper output{min-width:1.6ch;text-align:center;color:var(--tx);font-size:14px;font-weight:650;font-variant-numeric:tabular-nums}
+.seat{padding:10px 12px 12px 14px;border-left:2px solid var(--rule-2);transition:background .12s}
+.seat + .seat{margin-top:6px}
+.seat.lead{border-left-color:var(--azure)}
+.seat.plan{border-left-color:var(--violet)}
+.seat.on{background:var(--raise)}
+.who{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
+.who b{font-weight:650}
+.seat.lead .who b{color:var(--azure)}
+.seat.plan .who b{color:var(--violet)}
+.who span{color:var(--tx-2);font-size:12.5px}
+.ctl{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1.55fr) minmax(0,.9fr);gap:6px}
+.ctl .x{grid-column:1/-1}
+.ctl .none{grid-column:span 1;align-self:center;padding:0 2px;color:var(--tx-3);font-size:12.5px;line-height:1.3}
+.ctl .none.wide{grid-column:2/-1}
+.warn{margin-top:8px;color:var(--red);font-size:12.5px}
+.clis{display:flex;align-items:center;gap:10px;margin-top:14px;color:var(--tx-2);font-size:12.5px}
+.clis b{color:var(--tx);font-weight:500}
+.clis .bad{color:var(--red)}
+.clis .btn{margin-left:auto;flex:none}
 
-  .launch{position:fixed;left:0;right:0;bottom:0;background:transparent;padding:0;z-index:6}
-  .launch .inner{max-width:100%;margin:0;display:flex;align-items:center;gap:20px;background:rgba(6,12,28,.97);border:0;border-top:1px solid var(--cy3);border-radius:0;padding:14px 40px;box-shadow:0 -8px 34px rgba(0,0,0,.7),0 0 22px var(--cy08) inset}
-  .cmd{flex:1;color:var(--dim);font-size:13px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-family:var(--mn);letter-spacing:.03em;padding:10px 14px;background:rgba(0,0,0,.45);border:1px solid var(--cy15)}.cmd b{color:var(--cy);font-weight:700}
-  .go{display:inline-flex;align-items:center;gap:10px;background:linear-gradient(135deg,var(--am08),rgba(255,177,78,.03));color:var(--am);font-weight:800;border:1px solid var(--am);border-radius:0;padding:13px 30px;font-size:16px;font-family:var(--head);text-transform:uppercase;letter-spacing:.14em;cursor:pointer;clip-path:polygon(0 0,calc(100% - 13px) 0,100% 13px,100% 100%,13px 100%,0 calc(100% - 13px));box-shadow:0 0 20px var(--am2),inset 0 0 20px rgba(255,177,78,.04);transition:.16s}
-  .go:hover{box-shadow:0 0 36px rgba(255,177,78,.5);transform:translateY(-1px);color:#ffd9a3}
-  .stop{display:inline-flex;align-items:center;gap:8px;background:transparent;color:var(--dim);border:1px solid var(--cy15);border-radius:0;padding:13px 20px;font-size:13px;font-family:var(--head);text-transform:uppercase;letter-spacing:.1em;cursor:pointer;transition:.16s}
-  .stop:hover{border-color:#ff6b6b;color:#ff8a8a;box-shadow:0 0 16px rgba(255,68,68,.18)}
-  .stop .i{width:13px;height:13px}
+/* layout */
+.gal{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.tpl{position:relative;display:block;padding:10px 10px 11px;border:1px solid var(--rule);border-radius:8px;cursor:pointer;
+  transition:border-color .12s}
+.tpl:hover{border-color:var(--rule-2)}
+.tpl input{position:absolute;opacity:0;pointer-events:none}
+.tpl:has(input:checked){border-color:var(--azure);box-shadow:0 0 0 1px var(--azure)}
+.tpl:has(input:focus-visible){outline:2px solid var(--azure);outline-offset:3px}
+.minibox{display:block;padding:1px;border-radius:4px;background:var(--term)}
+.mini{display:block;width:100%;aspect-ratio:2.1/1;overflow:visible}
+.mini rect{fill:none;stroke:var(--term-rule);stroke-width:1;vector-effect:non-scaling-stroke}
+.mini .ld{fill:color-mix(in srgb,var(--azure) 30%,transparent)}
+.mini .pln{fill:color-mix(in srgb,var(--violet) 30%,transparent)}
+.mini .twr,.mini .fls{fill:color-mix(in srgb,var(--term-dim) 22%,transparent)}
+.tpl .nm{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-top:9px}
+.tpl .nm b{font-weight:650}
+.tpl .ds{display:block;margin-top:2px;color:var(--tx-2);font-size:12.5px;line-height:1.45}
+.tag{color:var(--tx-2);font-size:11.5px;white-space:nowrap}
+.tag.best{color:var(--azure)}
+.tag.warn{color:var(--amber)}
 
-  .scrim{position:fixed;inset:0;background:rgba(3,7,20,.86);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:20}
-  .scrim.show{display:flex}
-  .modal{width:600px;max-width:94vw;max-height:90vh;overflow:auto;background:var(--surface);border:1px solid var(--cy3);border-radius:0;box-shadow:0 0 50px rgba(53,224,255,.1),0 40px 100px rgba(0,0,0,.9);animation:pop .16s ease-out;position:relative}
-  .modal::before{content:'';position:absolute;inset:0;pointer-events:none;z-index:10;background:
-    linear-gradient(var(--cy),var(--cy)) top left/18px 2px no-repeat,
-    linear-gradient(var(--cy),var(--cy)) top left/2px 18px no-repeat,
-    linear-gradient(var(--cy),var(--cy)) bottom right/18px 2px no-repeat,
-    linear-gradient(var(--cy),var(--cy)) bottom right/2px 18px no-repeat,
-    linear-gradient(var(--cy5),var(--cy5)) top right/18px 2px no-repeat,
-    linear-gradient(var(--cy5),var(--cy5)) top right/2px 18px no-repeat,
-    linear-gradient(var(--cy5),var(--cy5)) bottom left/18px 2px no-repeat,
-    linear-gradient(var(--cy5),var(--cy5)) bottom left/2px 18px no-repeat}
-  @keyframes pop{from{transform:translateY(10px) scale(.97);opacity:0}to{transform:none;opacity:1}}
-  .mhead{padding:16px 20px 14px;border-bottom:1px solid var(--cy15);background:rgba(53,224,255,.02);display:flex;align-items:flex-start;gap:12px;position:relative;z-index:1}
-  .mhead .ti{flex:1}.mhead h3{font-size:20px;font-family:var(--head);text-transform:uppercase;letter-spacing:.1em;color:var(--cy);font-weight:800;text-shadow:0 0 18px rgba(53,224,255,.32)}.mhead p{color:var(--dim);font-size:12px;margin-top:4px;font-family:var(--mn);line-height:1.5}
-  .x{background:var(--cy08);border:1px solid var(--cy3);color:var(--dim);width:30px;height:30px;border-radius:0;cursor:pointer;transition:.16s}.x:hover{background:rgba(255,68,68,.14);border-color:#ff4444;color:#ff6b6b}
-  .mbody{padding:16px 20px;position:relative;z-index:1}
-  .m-prev{height:188px;margin-bottom:8px}
-  .m-prev .ck{height:100%}
-  .m-cap{color:var(--faint);font-size:11px;text-align:center;margin-bottom:14px;font-family:var(--mn);letter-spacing:.04em}
-  .arow{display:grid;grid-template-columns:14px 1.1fr 94px 1.3fr 86px;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid rgba(53,224,255,.07)}
-  .arow input,.arow select{min-width:0;width:100%}
-  .arow input{background:rgba(53,224,255,.05);border:1px solid var(--cy15);color:var(--text);border-radius:0;padding:7px 9px;font-family:var(--mn);font-size:12px}
-  .arow .m-modelcell{display:flex;flex-direction:column;gap:3px;min-width:0}
-  .arow .m-nothink{color:var(--faint);text-align:center;font-size:11px;font-family:var(--mn)}
-  .arow:last-child{border-bottom:0}.arow .av{width:9px;height:9px;border-radius:50%}
-  .arow .who b{font-size:14px;font-family:var(--head);letter-spacing:.05em;color:var(--text)}.arow .who small{color:var(--faint);font-size:11px;display:block;font-family:var(--mn)}
-  select{width:100%;background:rgba(53,224,255,.05);border:1px solid var(--cy15);color:var(--text);border-radius:0;padding:8px 10px;font-size:12px;font-family:var(--mn);cursor:pointer;transition:border-color .16s}
-  select:focus{border-color:var(--cy3);outline:none}
-  option{background:#0a1628;color:var(--text)}
-  .mfoot{padding:14px 20px 18px;display:flex;gap:10px;justify-content:space-between;align-items:center;border-top:1px solid var(--cy15);position:sticky;bottom:0;background:rgba(8,20,38,.96);z-index:1}
-  .mfoot .lyt{color:var(--faint);font-size:11.5px;font-family:var(--mn)}
-  .ghost{background:transparent;border:1px solid var(--cy15);color:var(--dim);border-radius:0;padding:9px 16px;cursor:pointer;font-family:var(--mn);font-size:11.5px;transition:.16s}
-  .ghost:hover{background:var(--cy08);color:var(--cy);border-color:var(--cy3)}
-  .confirm{display:inline-flex;align-items:center;gap:8px;background:var(--cy08);color:var(--cy);font-weight:800;border:1px solid var(--cy5);border-radius:0;padding:10px 22px;cursor:pointer;font-family:var(--head);text-transform:uppercase;letter-spacing:.1em;font-size:14px;clip-path:polygon(0 0,calc(100% - 9px) 0,100% 9px,100% 100%,9px 100%,0 calc(100% - 9px));box-shadow:0 0 14px var(--cy15);transition:.16s}.confirm:hover{background:var(--cy2);box-shadow:0 0 24px var(--cy3)}
+/* mode: a decision table. Scan the right column for your situation */
+.mode{display:grid;grid-template-columns:16px 132px minmax(0,1fr);align-items:baseline;gap:0 12px;padding:7px 10px;
+  border-radius:6px;cursor:pointer}
+.mode:hover,.mode:has(input:checked){background:var(--raise)}
+.mode input{align-self:start;margin-top:4px}
+.mode b{font-weight:600}
+.mode .when{color:var(--tx-2)}
+.mode:has(input:checked) .when{color:var(--tx)}
+.mode .desc{display:none;grid-column:3;max-width:78ch;margin-top:4px;color:var(--tx-2)}
+.mode:has(input:checked) .desc{display:block}
 
-  /* save-profile prompt */
-  .toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%);background:rgba(8,20,38,.97);border:1px solid var(--cy3);border-radius:0;padding:12px 20px;font-size:12.5px;color:var(--text);box-shadow:0 0 24px var(--cy15),0 14px 40px rgba(0,0,0,.6);z-index:30;opacity:0;pointer-events:none;transition:opacity .2s;font-family:var(--mn);letter-spacing:.02em}
-  .toast.show{opacity:1}
+/* profiles */
+.prof{display:flex;align-items:baseline;gap:10px;width:100%;padding:7px 10px;border:0;border-radius:6px;background:none;
+  text-align:left;cursor:pointer}
+.prof:hover{background:var(--raise)}
+.prof b{flex:none;font-weight:600}
+.prof span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx-2);font-size:12.5px}
+.prof i{flex:none;margin-left:auto;color:var(--tx-3);font-size:12px;font-style:normal}
+.prof.on i{color:var(--green)}
+.empty{padding:2px 10px;color:var(--tx-2);font-size:13px}
+#profiles-list{margin-bottom:12px}
 
-  /* folder-picker modal extras */
-  .chfolder-btn{display:flex;align-items:center;gap:6px;background:var(--cy08);border:1px solid var(--cy3);color:var(--cy);border-radius:0;padding:6px 12px;font-size:11px;cursor:pointer;white-space:nowrap;font-family:var(--mn);text-transform:uppercase;letter-spacing:.05em;transition:.16s}
-  .chfolder-btn:hover{color:#fff;background:var(--cy2);box-shadow:0 0 10px var(--cy3)}
-  .fp-path{font-family:var(--mn);font-size:12px;color:var(--text);word-break:break-all;margin-bottom:12px;padding:9px 11px;background:rgba(0,0,0,.4);border:1px solid var(--cy15);border-radius:0}
-  .fp-list{display:flex;flex-direction:column;gap:3px;max-height:320px;overflow-y:auto}
-  .fp-entry{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:0;cursor:pointer;font-size:13px;color:var(--text);border:1px solid transparent;font-family:var(--mn);transition:.16s}
-  .fp-entry:hover{background:var(--cy04);border-color:var(--cy15)}
-  .fp-entry.up{color:var(--dim)}
-  .fp-entry .fp-ic{color:var(--cy);opacity:.8;flex-shrink:0}
+/* launch bar */
+.launch{position:sticky;bottom:0;z-index:2;display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;padding:12px 28px;
+  border-top:1px solid var(--rule);background:var(--bg)}
+.run{display:flex;align-items:center;gap:8px;color:var(--tx-2);font-size:12.5px;white-space:nowrap}
+.run .dot{width:9px;height:9px;border:1.5px solid var(--tx-3);border-radius:50%}
+.run.on{color:var(--tx)}
+.run.on .dot{border-color:var(--green);background:var(--green)}
+.run.off .dot{border-color:var(--red)}
+.sum{flex:1 1 320px;min-width:0}
+.sum .l1{font-weight:600}
+.sum .l2{color:var(--tx-2);font-size:12.5px}
+.notice{margin-top:4px;color:var(--red);font-size:13px}
 
-  @keyframes dotPulse{0%,100%{opacity:1}50%{opacity:.45}}
-  @keyframes ckScan{0%{top:0;opacity:.9}100%{top:100%;opacity:.1}}
-  @media (prefers-reduced-motion: reduce){
-    .ck::before,.cp.lead::after,.pill.on .dot{animation:none}
-    .tpl{transition:none}
-  }
+/* dialogs + toast */
+dialog{width:min(560px,calc(100vw - 32px));max-height:calc(100vh - 48px);padding:0;border:1px solid var(--rule-2);
+  border-radius:10px;background:var(--bg);color:var(--tx)}
+dialog::backdrop{background:rgb(4 8 14 / .58)}
+.dlg{display:grid;gap:14px;padding:20px 22px 18px}
+.dlg h2{font-size:16px;font-weight:650}
+.dlg p{color:var(--tx-2);font-size:13px}
+.dlg .err{color:var(--red)}
+.dlg .err:empty,#dm-err:empty{display:none}
+.fp-list{max-height:min(44vh,360px);overflow:auto;border:1px solid var(--rule);border-radius:6px}
+.fp-list button{display:block;width:100%;padding:7px 12px;border:0;border-bottom:1px solid var(--rule);background:none;
+  text-align:left;cursor:pointer}
+.fp-list button:last-child{border-bottom:0}
+.fp-list button:hover{background:var(--raise)}
+.fp-list .up{color:var(--tx-2)}
+#toast{position:fixed;left:50%;bottom:84px;z-index:5;max-width:min(560px,calc(100vw - 32px));padding:9px 16px;
+  border:1px solid var(--rule-2);border-radius:8px;background:var(--raise);font-size:13px;
+  opacity:0;transform:translate(-50%,6px);pointer-events:none;transition:opacity .16s,transform .16s}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+.fatal{grid-column:1/-1;display:grid;gap:10px;justify-items:start;max-width:60ch;padding:32px 0}
+.fatal h2{font-size:18px}
+.fatal p{color:var(--tx-2)}
+
+@media (max-width:979px){
+  main{display:flex;flex-direction:column;align-items:stretch;gap:30px}
+  .col{display:contents}
+  #sec-stage{order:1}#sec-crew{order:2}#sec-layout{order:3}#sec-mode{order:4}#sec-profiles{order:5}
+}
+@media (max-width:640px){
+  .top,.launch{padding-left:16px;padding-right:16px}
+  main{padding:18px 16px 28px}
+  .hd .aux:not(.stepper){display:none}
+  .mode{grid-template-columns:16px minmax(0,1fr)}
+  .mode .when,.mode .desc{grid-column:2}
+  .launch .btn{flex:1}
+  .sum .l2{display:none}
+}
+@media (max-width:460px){.ctl{grid-template-columns:1fr 1fr}.ctl .none.wide{grid-column:1/-1}}
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
 </style>
 </head>
 <body>
-<div class="app">
-  <header>
-    <div class="logo">
-      <div class="mark">M</div>
-      <div><b>MKCREW&nbsp;Studio</b><span id="ws-name" class="mono" style="display:none;margin-left:8px;padding:1px 8px;border-radius:6px;background:#2563eb;color:#fff;font-size:11px;font-weight:600;vertical-align:middle"></span><div class="sub mono" id="cwd-label">loading…</div></div>
-      <button class="chfolder-btn" id="btn-change-folder" title="Change project folder">
-        <svg class="i" style="width:13px;height:13px" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-        Change folder
-      </button>
-    </div>
-    <div class="clis" id="clis-bar">
-      <!-- filled by renderClis() -->
-    </div>
-  </header>
-
-  <div class="grid">
-    <div>
-      <h2 class="sec"><span class="n">1</span>Team size</h2>
-      <div class="card pad">
-        <div class="stepper">
-          <button class="b" id="btn-dec">&#8211;</button>
-          <div class="val" id="count-val">4</div>
-          <button class="b" id="btn-inc">+</button>
-          <div class="hint" id="team-hint">agents — <b style="color:var(--text)">main</b> + 3 from the priority roster</div>
-        </div>
-        <div class="roster" id="roster">
-          <!-- filled by renderTeam() -->
-        </div>
-      </div>
-
-      <h2 class="sec"><span class="n">2</span>Layout template <span style="text-transform:none;letter-spacing:0;color:var(--faint)">— this is how the cockpit will look. Click to configure.</span></h2>
-      <div class="tpl-grid" id="gallery">
-        <!-- filled by renderTemplates() -->
-      </div>
-
-      <h2 class="sec"><span class="n">3</span>Core mode</h2>
-      <div class="modes" id="modes-grid">
-        <!-- filled by renderModes() -->
-      </div>
-    </div>
-
-    <div class="side">
-      <div class="card pad">
-        <h3>Profiles</h3>
-        <div id="profiles-list">
-          <!-- filled by renderProfiles() -->
-        </div>
-        <div class="row-btns">
-          <button class="gbtn" id="btn-save-profile">
-            <svg class="i" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-            Save
-          </button>
-          <button class="gbtn" id="btn-import-profile">
-            <svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Import
-          </button>
-          <button class="gbtn" id="btn-export-profile">
-            <svg class="i" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Export
-          </button>
-        </div>
-      </div>
-      <div class="card pad" style="margin-top:14px">
-        <h3>Recent</h3>
-        <div style="color:var(--dim);font-size:12.5px;line-height:1.9" id="recent-list">
-          <div style="color:var(--faint);font-size:12px">No recent sessions yet.</div>
-        </div>
-      </div>
-    </div>
+<header class="top">
+  <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2l8.66 5v10L12 22l-8.66-5V7z"/></svg>MKCREW <span>Studio</span></div>
+  <div class="where">
+    <input id="ws-name" type="text" maxlength="40" autocomplete="off" spellcheck="false" aria-label="Workspace name"
+           title="Workspace name. It labels the cockpit's top bar.">
+    <span class="path" id="cwd-label"><bdi></bdi></span>
+    <button class="btn sm" id="btn-change-folder" type="button">Change folder</button>
   </div>
-</div>
+</header>
 
-<div class="launch">
-  <div class="inner">
-    <div class="cmd mono" id="cmd-preview"><b>mk</b> start — …</div>
-    <button class="stop" id="btn-kill" title="Stop the running cockpit (mk kill)">
-      <svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
-      Stop cockpit
-    </button>
-    <button class="go" id="btn-launch">
-      <svg class="i-fill" viewBox="0 0 24 24" style="width:15px;height:15px"><polygon points="6 3 20 12 6 21 6 3"/></svg>
-      Launch cockpit
-    </button>
+<main id="bench">
+  <div class="col">
+    <section id="sec-stage" aria-labelledby="h-stage">
+      <div class="hd"><h2 id="h-stage">Cockpit preview</h2><span class="fill"></span><span class="aux">click a pane to edit its seat</span></div>
+      <div class="termwrap"><div class="term" role="group" aria-label="Preview of the cockpit this crew opens">
+        <div class="tbar" id="pv-bar"></div>
+        <div class="tbody" id="pv-body"></div>
+      </div></div>
+    </section>
+    <section id="sec-layout" aria-labelledby="h-layout">
+      <div class="hd"><h2 id="h-layout">Layout</h2><span class="fill"></span><span class="aux" id="layout-cap"></span></div>
+      <div class="gal" id="gallery" role="radiogroup" aria-labelledby="h-layout"></div>
+    </section>
+    <section id="sec-mode" aria-labelledby="h-mode">
+      <div class="hd"><h2 id="h-mode">Mode</h2><span class="fill"></span><span class="aux">how the lead runs the crew</span></div>
+      <div id="modes" role="radiogroup" aria-labelledby="h-mode"></div>
+      <p class="hint" id="mode-hint"></p>
+    </section>
   </div>
-</div>
-
-<!-- Config modal -->
-<div class="scrim" id="scrim" onclick="if(event.target===this)closeModal()">
-  <div class="modal">
-    <div class="mhead">
-      <div class="ti"><h3 id="m-title">Configure</h3><p id="m-desc"></p></div>
-      <button class="x" onclick="closeModal()">&#10005;</button>
-    </div>
-    <div class="mbody">
-      <div class="m-prev" id="m-prev"></div>
-      <div class="m-cap" id="m-cap"></div>
-      <div id="m-agents">
-        <!-- filled by openModal() -->
+  <div class="col">
+    <section id="sec-crew" aria-labelledby="h-crew">
+      <div class="hd"><h2 id="h-crew">Crew</h2><span class="fill"></span>
+        <span class="aux stepper">
+          <button class="btn sq" id="btn-dec" type="button" aria-label="Remove a seat">&minus;</button>
+          <output id="count-val" aria-label="Seats">4</output>
+          <button class="btn sq" id="btn-inc" type="button" aria-label="Add a seat">+</button>
+        </span></div>
+      <ol id="roster"></ol>
+      <p class="hint" id="team-hint"></p>
+      <div class="clis" id="clis-bar"></div>
+    </section>
+    <section id="sec-profiles" aria-labelledby="h-prof">
+      <div class="hd"><h2 id="h-prof">Profiles</h2><span class="fill"></span><span class="aux">crews you reuse across projects</span></div>
+      <div id="profiles-list"></div>
+      <div class="row">
+        <button class="btn sm" id="btn-save-profile" type="button">Save crew as profile</button>
+        <button class="btn sm" id="btn-import-profile" type="button">Import</button>
+        <button class="btn sm" id="btn-export-profile" type="button">Export</button>
       </div>
-    </div>
-    <div class="mfoot">
-      <span class="lyt" id="m-foot"></span>
-      <span>
-        <button class="ghost" onclick="openModelsEditor()" title="Edit the model + thinking suggestions">&#9998; models</button>
-        <button class="ghost" onclick="closeModal()">Cancel</button>
-        <button class="confirm" onclick="confirmModal()">Confirm team</button>
-      </span>
-    </div>
+    </section>
   </div>
-</div>
+</main>
 
-<!-- Model-catalog editor modal -->
-<div class="scrim" id="em-scrim" onclick="if(event.target===this)closeModelsEditor()">
-  <div class="modal" style="width:560px">
-    <div class="mhead">
-      <div class="ti"><h3>Edit model list</h3><p>Suggestions for the model dropdowns. JSON: <code>models</code> = provider → [names], <code>thinking</code> = provider → [levels]. You can always type any model on an agent too.</p></div>
-      <button class="x" onclick="closeModelsEditor()">&#10005;</button>
-    </div>
-    <div class="mbody">
-      <textarea id="em-text" spellcheck="false" style="width:100%;height:300px;font-family:ui-monospace,monospace;font-size:12px;line-height:1.4;background:#06080c;color:var(--dim);border:1px solid var(--border2);border-radius:8px;padding:10px"></textarea>
-      <div id="em-err" style="color:#e87;font-size:12px;min-height:17px;margin-top:4px"></div>
-    </div>
-    <div class="mfoot">
-      <span class="lyt" style="font-size:11px;color:var(--faint)">saved to $XDG_STATE_HOME/mkcrew/models.json</span>
-      <span>
-        <button class="ghost" onclick="resetModelsEditor()" title="Discard customisations, use the built-in defaults">Reset to defaults</button>
-        <button class="ghost" onclick="closeModelsEditor()">Cancel</button>
-        <button class="confirm" onclick="saveModelsEditor()">Save</button>
-      </span>
-    </div>
+<footer class="launch">
+  <div class="run" id="run-state"><span class="dot"></span><span id="run-text">checking</span></div>
+  <div class="sum">
+    <div class="l1" id="sum-1"></div>
+    <div class="l2" id="sum-2"></div>
+    <div class="notice" id="notice" role="alert" hidden></div>
   </div>
-</div>
+  <button class="btn danger" id="btn-kill" type="button" disabled>Stop cockpit</button>
+  <button class="btn primary" id="btn-launch" type="button"><span id="launch-text">Launch cockpit</span><kbd id="launch-kbd">Ctrl &crarr;</kbd></button>
+</footer>
 
-<!-- Folder-picker modal -->
-<div class="scrim" id="fp-scrim" onclick="if(event.target===this)closeFolderPicker()">
-  <div class="modal" style="width:520px">
-    <div class="mhead">
-      <div class="ti"><h3>Change project folder</h3><p>Navigate into a subfolder, then click "Use this folder".</p></div>
-      <button class="x" onclick="closeFolderPicker()">&#10005;</button>
-    </div>
-    <div class="mbody">
-      <div class="fp-path" id="fp-path">…</div>
-      <div class="fp-list" id="fp-list">
-        <!-- filled by loadDirs() -->
-      </div>
-    </div>
-    <div class="mfoot">
-      <span class="lyt" id="fp-foot" style="font-size:11.5px;color:var(--faint)">Select a folder above</span>
-      <span>
-        <button class="ghost" onclick="closeFolderPicker()">Cancel</button>
-        <button class="confirm" id="fp-use-btn" onclick="useFolderPicker()">Use this folder</button>
-      </span>
-    </div>
-  </div>
-</div>
+<dialog id="dlg-ask" aria-labelledby="da-t">
+  <form method="dialog" class="dlg">
+    <h2 id="da-t"></h2>
+    <p id="da-p"></p>
+    <div class="row"><span class="grow"></span><button class="btn" type="button" data-close>Cancel</button><button class="btn primary" id="da-ok" value="ok"></button></div>
+  </form>
+</dialog>
 
-<!-- Toast -->
-<div class="toast" id="toast"></div>
+<dialog id="dlg-profile" aria-labelledby="dp-t">
+  <form method="dialog" class="dlg">
+    <h2 id="dp-t">Save crew as profile</h2>
+    <p>A profile keeps the seats, layout and mode so another project can load the same crew.</p>
+    <input id="dp-name" type="text" maxlength="60" autocomplete="off" aria-label="Profile name" placeholder="Profile name">
+    <p class="err" id="dp-note"></p>
+    <div class="row"><span class="grow"></span><button class="btn" type="button" data-close>Cancel</button><button class="btn primary" id="dp-ok" value="ok">Save profile</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-models" aria-labelledby="dm-t">
+  <form method="dialog" class="dlg">
+    <h2 id="dm-t">Model list</h2>
+    <p>The suggestions each seat's model and effort menus offer. Any other id still works through &ldquo;other model&rdquo;. Your edits are saved to models.json in MKCREW's state folder.</p>
+    <textarea id="dm-text" rows="16" spellcheck="false" aria-label="Model list as JSON"></textarea>
+    <p id="dm-err" role="status"></p>
+    <div class="row"><button class="btn quiet" id="dm-reset" type="button">Reset to the built-in list</button><span class="grow"></span>
+      <button class="btn" type="button" data-close>Cancel</button><button class="btn primary" id="dm-save" type="button">Save list</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-folder" aria-labelledby="df-t">
+  <form method="dialog" class="dlg">
+    <h2 id="df-t">Choose the project folder</h2>
+    <p class="mono" id="df-path"></p>
+    <div class="fp-list" id="df-list"></div>
+    <div class="row"><span class="grow"></span><button class="btn" type="button" data-close>Cancel</button><button class="btn primary" id="df-use" type="button">Use this folder</button></div>
+  </form>
+</dialog>
+
+<div id="toast" role="status" aria-live="polite"></div>
 
 <script>
-// ── mini-cockpit preview renderer ───────────────────────────────────────────
-// Matches the real branded cockpit (status bar + panes).
-const ckBar = (tabs, single) =>
-  `<div class="ck-bar"><span class="bm">M</span>${
-    single
-      ? `<span class="bt">mkcrew</span>`
-      : tabs.map((t,i)=>`<span class="bt${i===0?' on':''}">${t}</span>`).join('')
-  }<span class="br">&#9679; core: live</span></div>`;
-
-// (static CK_PREVIEWS removed — ckPreview below renders previews parametrically from STATE.count)
-
-// Mini cockpit preview that reflects the ACTUAL agent count (STATE.count) — so a template visibly
-// scales with the team instead of looking capped at a few panes. (Supersedes the static CK_PREVIEWS.)
-function ckPreview(key) {
-  const n = Math.max(1, STATE.count || 1);
-  const lbl = i => i === 0 ? 'main' : 'w' + i;
-  const cp = (t, c) => `<div class="cp${c ? ' ' + c : ''}">${t}</div>`;
-  const CORE = cp('core', 'core');
-  const cells = (from, to, max) => {                       // agent cells from..to, capped (+N overflow)
-    const out = [], end = Math.min(to, from + (max || 99));
-    for (let i = from; i < end; i++) out.push(cp(lbl(i), i === 0 ? 'lead' : ''));
-    if (to > end) out.push(cp('+' + (to - end)));
-    return out;
-  };
-  const grid = items => {
-    const cols = Math.ceil(Math.sqrt(items.length));
-    return `<div class="ck-body" style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:2px">${items.join('')}</div>`;
-  };
-  const ptabs = (k, label, cap) => {                       // page/agent tabs with +N overflow
-    const t = []; for (let p = 0; p < Math.min(k, cap); p++) t.push(label(p)); if (k > cap) t.push('+' + (k - cap)); return t;
-  };
-  switch (key) {
-    case 'tiled':
-      return ckBar([], true) + grid([...cells(0, n, 15), CORE]);
-    case 'even-horizontal':                                   // SIDE BY SIDE: agents as side-by-side columns on top, one full-width core strip below
-      return ckBar([], true) + `<div class="ck-body">` +
-        `<div class="ck-row">${cells(0, n, 12).join('')}</div>` +
-        `<div class="ck-row" style="flex:0 0 28%">${CORE}</div></div>`;
-    case 'even-vertical':
-      return ckBar([], true) + `<div class="ck-body">${[...cells(0, n, 10), CORE].map(c => `<div class="ck-row">${c}</div>`).join('')}</div>`;
-    case 'main-vertical':                                     // LEAD LEFT: main (big) over a small core on the left; workers stack down the right
-      return ckBar([], true) + `<div class="ck-body"><div class="ck-row">` +
-        `<div class="ck-col" style="flex:1.5">` +
-          `<div class="ck-row" style="flex:2">${cp('main · lead', 'lead')}</div>` +
-          `<div class="ck-row" style="flex:1">${CORE}</div></div>` +
-        `<div class="ck-col" style="flex:1">${cells(1, n, 8).join('')}</div></div></div>`;
-    case 'main-horizontal':
-      return ckBar([], true) + `<div class="ck-body">` +
-        `<div class="ck-row" style="flex:1.8">${cp('main · lead', 'lead')}</div>` +
-        `<div class="ck-row" style="flex:1">${[...cells(1, n, 10), CORE].join('')}</div></div>`;
-    case 'hub':
-      return ckBar(ptabs(n, lbl, 4)) + `<div class="ck-body">` +
-        `<div class="ck-row" style="flex:2.4">${cp('main · lead', 'lead')}</div>` +
-        `<div class="ck-row" style="flex:1">${cp('core · control tower', 'core')}</div></div>`;
-    case 'pages': {                                          // tabs + agents GRID over a full-width core strip
-      const m = Math.min(n, 6), cols = Math.ceil(Math.sqrt(m));
-      return ckBar(ptabs(Math.ceil(n / 6), p => 'page ' + (p + 1), 4)) +
-        `<div class="ck-body">` +
-          `<div style="flex:1;display:grid;grid-template-columns:repeat(${cols},1fr);gap:3px;min-height:0">${cells(0, m).join('')}</div>` +
-          `<div class="ck-row" style="flex:0 0 22%">${cp('core · control tower', 'core')}</div>` +
-        `</div>`;
-    }
-    case 'lead-left-ide':                                     // LEAD LEFT + Files IDE: agent CLIs stack on the left; one wide files-IDE (core | explorer | editor) on the right
-      return ckBar([], true) + `<div class="ck-body"><div class="ck-row">` +
-        `<div class="ck-col" style="flex:1">${[cp('main · lead', 'lead'), ...cells(1, n, 6)].join('')}</div>` +
-        `<div class="ck-col" style="flex:2.4"><div class="ck-row">` +
-          `${cp('core', 'core')}${cp('explorer')}${cp('editor', 'act')}</div></div></div></div>`;
-    default:
-      return ckBar([], true) + `<div class="ck-body"><div class="ck-row">${cp('main', 'lead')}${CORE}</div></div>`;
+'use strict';
+// ── tiny DOM kit ─────────────────────────────────────────────────────────────
+// Every piece of data (folder names, profile names, model ids, server copy) enters the page as a text
+// node through el(), never through innerHTML, so nothing a file system or a JSON file says can run here.
+const $ = id => document.getElementById(id);
+const clean = kids => kids.flat(2).filter(c => c != null && c !== false);   // conditions and lists pass straight through
+const fill = (node, ...kids) => node.replaceChildren(...clean(kids));
+function el(tag, props, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') n.className = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else if (k === 'data') Object.assign(n.dataset, v);
+    else n.setAttribute(k, v === true ? '' : v);
   }
+  n.append(...clean(kids));
+  return n;
+}
+const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? undefined
+    : {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  if (!r.ok) throw new Error(`${path} answered ${r.status}`);
+  return r.json();
 }
 
-// ── mode icons ───────────────────────────────────────────────────────────────
-const MODE_ICONS = {
-  standard: `<svg class="i" viewBox="0 0 24 24"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>`,
-  fast:     `<svg class="i" viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>`,
-  thorough: `<svg class="i" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>`,
-  'plan-first': `<svg class="i" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6"/><path d="M9 16h6"/></svg>`,
-  architect: `<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>`,
-  warroom:   `<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>`,
-  chief:     `<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><path d="m3 21 8.02-14.26"/><path d="m12.99 6.74 1.93 3.44"/><path d="M19.14 12a10 10 0 0 1-14.28 0"/><path d="m21 21-2.16-3.84"/></svg>`,
-  venture:   `<svg class="i" viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><path d="M2 13h20"/><path d="M12 11v4"/></svg>`,
+// ── state ────────────────────────────────────────────────────────────────────
+const S = {
+  path: '', folderName: '', name: '', nameDirty: false, configured: false,
+  count: 4, layout: 'main-vertical', mode: 'standard',
+  providers: [], models: [], efforts: [],        // per seat, index = seat position
+  agents: [], clis: {}, accounts: [], catalog: {models: {}, thinking: {}},
+  templates: [], modes: [], profiles: [],
+  run: {running: false, here: false, project: null}, offline: false,
+  focus: 0, loaded: null, busy: false,
 };
+const UI = {customProv: [], customModel: []};     // seats whose CLI / model is typed by hand
 
-const PROFILE_ICON = `<svg class="i" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
+// ── seating ──────────────────────────────────────────────────────────────────
+// Mirrors teamconfig._ROLE_PRIORITY and build_team's planner seating. The server decides at save; these
+// labels have to show what it will decide (tests/test_studio.py checks the two agree).
+const ROLE_PRIORITY = ['main', 'worker1', 'worker2', 'worker3', 'planner', 'worker4', 'worker5', 'worker6'];
+const PLANNER_MODES = ['chief', 'warroom', 'venture'];
+function roles() {
+  const r = ROLE_PRIORITY.slice(0, S.count);
+  if (PLANNER_MODES.includes(S.mode) && S.count >= 3 && !r.includes('planner')) r[r.length - 1] = 'planner';
+  return r;
+}
+const roleClass = r => r === 'main' ? 'lead' : r.includes('plan') ? 'plan' : '';
+const roleNote = r => r === 'main' ? 'Lead. You talk to this one.' : r.includes('plan') ? 'Read-only planner'
+                    : r.includes('rev') ? 'Review gate' : 'Worker';
 
-// ── agent role → avatar class ────────────────────────────────────────────────
-function avClass(role) {
-  if (!role) return 'work';
-  if (role === 'main') return 'lead';
-  if (role.includes('rev')) return 'rev';
-  if (role.includes('plan')) return 'plan';
-  return 'work';
+// ── CLIs ─────────────────────────────────────────────────────────────────────
+const CLI_NAME = {antigravity: 'agy'};                         // provider -> the binary people know it by
+const known = () => Object.keys(S.clis);
+const provBase = v => (v && v.indexOf('@') > 0 && !v.startsWith('/')) ? v.split('@')[0] : v;   // claude@/bin/wrapper -> claude
+const provString = a => a.command || (a.bin ? `${a.provider}@${a.bin}` : a.provider) || 'claude';
+const accountValues = () => S.accounts.map(a => `${a.provider}@${a.bin}`);
+function seatInfo(i) {
+  const typed = !!UI.customProv[i], v = S.providers[i] || (typed ? '' : 'claude'), base = provBase(v);
+  const custom = typed || !(known().includes(v) || accountValues().includes(v));
+  // `cli` drives the model + effort menus. A raw command has neither: the server runs it exactly as typed.
+  const cli = known().includes(base) && (!custom || v.includes('@')) ? base : null;
+  return {v, base, custom, cli};
+}
+function cliText(i) {                                          // what the cockpit prints on the pane border
+  const {v, cli} = seatInfo(i);
+  if (!cli) return (v.trim().split(/\s+/)[0] || 'custom').split(/[\\/]/).pop();
+  const m = (S.models[i] || '').replace(/^claude-/, '');
+  return (CLI_NAME[cli] || cli) + (m ? ' ' + m : '');
+}
+function fillSeats() {                                         // defaults for seats that have no value yet
+  roles().forEach((role, i) => {
+    // A saved team is in seat order. The unsaved default roster is not, so match it by role.
+    const a = (S.configured && S.agents[i]) || S.agents.find(x => x.role === role) || {};
+    if (S.providers[i] == null) S.providers[i] = provString(a);
+    if (S.models[i] == null) {
+      const m = a.model || '';                                 // a claude-* roster default means nothing to another CLI
+      S.models[i] = provBase(S.providers[i]) !== 'claude' && m.startsWith('claude-') ? '' : m;
+    }
+    if (S.efforts[i] == null) S.efforts[i] = a.effort || '';
+  });
 }
 
-// ── global state ─────────────────────────────────────────────────────────────
-const api = (path, opts) => fetch(path, opts).then(r => r.json());
-let STATE = {
-  count: 4,
-  layout: 'hub',
-  mode: 'standard',
-  clis: {},
-  providers: [],       // per-agent provider strings, indexed by agent position
-  models: [],          // per-agent model overrides ('' = provider default)
-  efforts: [],         // per-agent thinking/reasoning level ('' = default; only claude/codex)
-  providerModels: {},  // provider -> [model suggestions]  (from /api/clis)
-  providerThinking: {},// provider -> [thinking levels]    (from /api/clis; absent = no toggle)
-  accounts: [],        // [{label, provider, bin}] account wrappers (from /api/clis) -> extra dropdown options
-  agents: [],          // from /api/config
-  templates: [],       // from /api/templates
-  modes: [],           // from /api/modes
-  profiles: [],        // from /api/profiles
-};
-// track which template is selected (key string)
-let _selTemplate = 'hub';
-// modal state
-let _modalKey = 'hub';
-let _modalSelects = [];  // <select> elements in modal agent rows
-
-// ── command preview ──────────────────────────────────────────────────────────
-function updateCmdPreview() {
-  const provStr = STATE.providers.slice(0, STATE.count).join('/') || 'claude';
-  const txt = document.getElementById('cmd-preview');
-  txt.innerHTML = `<b>mk</b> start &mdash; ${STATE.count} agent${STATE.count!==1?'s':''} &middot; ${STATE.layout} &middot; ${STATE.mode} &middot; ${provStr}`;
+// ── layout geometry ──────────────────────────────────────────────────────────
+// The same arithmetic as the builders in layouts.py, in percent, so the preview is the cockpit you get.
+function paneRects(layout, n) {
+  const P = [], seat = (i, x, y, w, h) => P.push({k: 'seat', i, x, y, w, h});
+  const grid = (ids, top, height, add) => {                    // row-major, the last row stretched
+    const cols = Math.ceil(Math.sqrt(ids.length)), rows = Math.ceil(ids.length / cols);
+    let at = 0;
+    for (let r = 0; r < rows; r++) {
+      const nc = Math.min(cols, ids.length - at);
+      for (let c = 0; c < nc; c++) add(ids[at++], c * 100 / nc, top + r * height / rows, 100 / nc, height / rows);
+    }
+  };
+  const all = [...Array(n).keys()];
+  let tabs = [];
+  switch (layout) {
+    case 'main-vertical': {                                    // lead over the tower on the left, workers stacked right
+      const lw = n > 1 ? 58 : 100, th = 23;
+      seat(0, 0, 0, lw, 100 - th); P.push({k: 'tower', x: 0, y: 100 - th, w: lw, h: th});
+      for (let i = 1; i < n; i++) seat(i, lw, (i - 1) * 100 / (n - 1), 100 - lw, 100 / (n - 1));
+      break;
+    }
+    case 'even-horizontal':                                    // a row of agents over a full-width tower strip
+      all.forEach(i => seat(i, i * 100 / n, 0, 100 / n, 81)); P.push({k: 'tower', x: 0, y: 81, w: 100, h: 19});
+      break;
+    case 'pages':                                              // a grid of agents over a tower strip (6 per page)
+      grid(all, 0, 80, seat); P.push({k: 'tower', x: 0, y: 80, w: 100, h: 20});
+      break;
+    case 'lead-left-ide': {                                    // agents stacked left, the files IDE full height right
+      const lw = 56, nw = n - 1, mh = nw ? 200 / (2 + nw) : 100;
+      seat(0, 0, 0, lw, mh);
+      for (let i = 1; i < n; i++) seat(i, 0, mh + (i - 1) * (100 - mh) / nw, lw, (100 - mh) / nw);
+      P.push({k: 'files', x: lw, y: 0, w: 100 - lw, h: 100});
+      break;
+    }
+    case 'hub':                                                // one tab per agent, a tower strip on each
+      tabs = all; seat(0, 0, 0, 100, 75); P.push({k: 'tower', x: 0, y: 75, w: 100, h: 25});
+      break;
+    case 'even-vertical': {
+      const h = 100 / (n + 1);
+      all.forEach(i => seat(i, 0, i * h, 100, h)); P.push({k: 'tower', x: 0, y: n * h, w: 100, h});
+      break;
+    }
+    case 'main-horizontal': {                                  // lead on top, everyone else in a row below
+      const w = 100 / n;
+      seat(0, 0, 0, 100, 58);
+      for (let i = 1; i < n; i++) seat(i, (i - 1) * w, 58, w, 42);
+      P.push({k: 'tower', x: (n - 1) * w, y: 58, w, h: 42});
+      break;
+    }
+    default:                                                   // tiled, and any unknown key (the builder falls back to tiled)
+      grid([...all, 'T'], 0, 100, (id, x, y, w, h) => id === 'T' ? P.push({k: 'tower', x, y, w, h}) : seat(id, x, y, w, h));
+  }
+  return {tabs, panes: P};
 }
-
-// ── render: CLI pills ────────────────────────────────────────────────────────
-function renderClis(clis) {
-  const bar = document.getElementById('clis-bar');
-  bar.innerHTML = Object.entries(clis).map(([name, on]) =>
-    `<span class="pill ${on?'on':'off'}"><span class="dot"></span>${name}</span>`
-  ).join('');
-}
-
-// ── render: template gallery ─────────────────────────────────────────────────
-const STAR_SVG = ` <svg class="i-fill star" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
-function _aspect() {                                    // monitor shape from the browser window
+function screenShape() {                                       // monitor shape, read off the browser window
   const r = window.innerWidth / window.innerHeight;
   return r >= 1.5 ? 'wide' : r <= 0.9 ? 'tall' : 'square';
 }
-// score a template for the current agent count + screen shape — higher = better fit
-function _fitOf(tpl, count, aspect) {
+function fitOf(tpl, count, shape) {                            // higher score = better fit for this crew + screen
   const min = tpl.min || 1, max = tpl.max || 20;
-  let score, badge, cls;
-  if (count >= min && count <= max) {
-    score = 100 - Math.abs(count - (min + max) / 2);    // central in range = best
-    badge = `fits ${count}`; cls = 'ok';
-  } else if (count > max) {
-    score = 30 - (count - max) * 5;                      // too many -> cramped
-    badge = 'tight'; cls = 'warn';
+  let score, kind;
+  if (count >= min && count <= max) { score = 100 - Math.abs(count - (min + max) / 2); kind = 'ok'; }
+  else if (count > max) { score = 30 - (count - max) * 5; kind = 'tight'; }
+  else { score = 25 - (min - count) * 4; kind = 'small'; }
+  if (tpl.screen) score += tpl.screen === shape ? 30 : shape !== 'square' ? -12 : 0;
+  return {score, kind, min, max};
+}
+function bestLayout() {
+  const shape = screenShape();
+  let best = null, top = -Infinity;
+  for (const t of S.templates) { const s = fitOf(t, S.count, shape).score; if (s > top) { top = s; best = t.key; } }
+  return best;
+}
+const tplName = k => (S.templates.find(t => t.key === k) || {}).name || k;
+const modeName = k => (S.modes.find(m => m.key === k) || {}).name || k;
+const wsLabel = () => S.name.trim() || S.folderName || 'MKCREW';
+
+// ── render: header ───────────────────────────────────────────────────────────
+function renderHeader() {
+  const inp = $('ws-name');
+  if (document.activeElement !== inp) inp.value = S.name;
+  inp.placeholder = S.folderName || 'workspace';
+  inp.style.width = clamp((inp.value || inp.placeholder).length + 3, 8, 42) + 'ch';
+  $('cwd-label').firstElementChild.textContent = S.path;
+  $('cwd-label').title = S.path;
+  document.title = `${wsLabel()} - MKCREW Studio`;
+}
+
+// ── render: cockpit preview ──────────────────────────────────────────────────
+const HINTS = [['a', 'add'], ['n', 'next'], ['z', 'zoom'], ['x', 'close'], ['d', 'detach'], ['Esc', 'unstick']];
+function towerNode(rs) {
+  const w = Math.max(...rs.map(r => r.length)) + 2;
+  return el('div', {class: 'pb tw'},
+    el('div', {class: 'h'}, el('span', {class: 'mark'}, '⬢'), el('b', null, wsLabel()),
+      S.mode !== 'standard' && [el('span', {class: 'm'}, 'mode'), el('b', null, S.mode)],
+      el('span', {class: 'n'}, `${rs.length} agents`)),
+    rs.map((r, i) => el('div', null, '○ ', el('span', {class: roleClass(r) || 'tx'}, r.padEnd(w)),
+      (cliText(i).split(' ')[0]).padEnd(9), 'idle')));
+}
+function renderPreview() {
+  const rs = roles(), {tabs, panes} = paneRects(S.layout, rs.length);
+  fill($('pv-bar'),
+    el('span', {class: 'mark'}, '⬢'), el('span', {class: 'name'}, tabs.length > 1 ? 'MKCREW' : wsLabel()),
+    el('span', {class: 'sep'}, '│'),
+    tabs.map((i, j) => el('span', {class: 'tab' + (j ? '' : ' on')}, rs[i])),
+    el('span', {class: 'hints'}, 'Ctrl-b ', HINTS.map(([k, v]) => [el('b', null, k), ` ${v}  `])));
+  const body = $('pv-body');
+  fill(body);
+  for (const p of panes) {
+    const style = `left:${p.x}%;top:${p.y}%;width:${p.w}%;height:${p.h}%`, vl = p.x > 0 ? ' vl' : '';
+    if (p.k === 'seat') {
+      const role = rs[p.i];
+      body.append(el('button', {type: 'button', tabindex: '-1', class: 'pn' + vl + (p.i === S.focus ? ' on' : ''), style, data: {seat: p.i},
+          'aria-label': `${role}, ${cliText(p.i)}. Edit this seat.`, onclick: () => jumpToSeat(p.i), onmouseenter: () => setFocus(p.i)},
+        el('span', {class: 'pl'}, el('b', {class: roleClass(role)}, role), el('span', {class: 'cli'}, cliText(p.i))),
+        el('span', {class: 'pb'}, el('span', {class: 'note' + (roleClass(role) ? '' : ' w')},
+          role === 'main' ? 'You talk to the lead here.' : role.includes('plan') ? 'Plans only. Never edits files.'
+                          : 'Takes asks from the lead, reports back.'))));
+    } else if (p.k === 'tower') {
+      body.append(el('div', {class: 'pn' + vl, style}, el('span', {class: 'pl'}, el('span', {class: 'dim'}, 'tower')), towerNode(rs)));
+    } else {
+      body.append(el('div', {class: 'pn' + vl, style}, el('span', {class: 'pl'}, el('span', {class: 'dim'}, 'files')),
+        el('div', {class: 'pb'}, el('div', {class: 'files'}, el('span', null, 'tower'), el('span', null, 'explorer'), el('span', null, 'editor')))));
+    }
+  }
+  trimTower();
+}
+function trimTower() {                                         // whole lines only, the way the real tower fits its pane
+  document.querySelectorAll('#pv-body .tw').forEach(tw => {
+    const rows = [...tw.children], floor = () => tw.getBoundingClientRect().bottom + 1;
+    rows.forEach(r => { r.hidden = false; });
+    if (rows[rows.length - 1].getBoundingClientRect().bottom > floor()) rows[0].hidden = true;   // it sheds its header before a crew row
+    rows.forEach(r => { if (!r.hidden) r.hidden = r.getBoundingClientRect().bottom > floor(); });
+  });
+}
+new ResizeObserver(trimTower).observe($('pv-body'));
+function setFocus(i) {                                         // the seat under the pointer or the cursor lights its pane
+  if (S.focus === i) return;
+  S.focus = i;
+  document.querySelectorAll('#pv-body .pn[data-seat]').forEach(p => p.classList.toggle('on', +p.dataset.seat === i));
+  document.querySelectorAll('#roster .seat').forEach((s, j) => s.classList.toggle('on', j === i));
+}
+function jumpToSeat(i) {
+  setFocus(i);
+  const c = document.querySelector(`[data-k="prov-${i}"]`);
+  if (c) { c.scrollIntoView({block: 'nearest'}); c.focus(); }
+}
+
+// ── render: crew ─────────────────────────────────────────────────────────────
+function seatRow(role, i) {
+  const {v, custom, cli} = seatInfo(i);
+  const provSel = el('select', {'aria-label': `${role} CLI`, data: {k: `prov-${i}`}, onchange: e => setProvider(i, e.target.value)},
+    known().map(p => el('option', {value: p, title: CLI_NAME[p] ? `runs ${CLI_NAME[p]}` : null}, p + (S.clis[p] ? '' : ', not found'))),
+    S.accounts.length > 0 && el('optgroup', {label: 'Accounts'},
+      S.accounts.map(a => el('option', {value: `${a.provider}@${a.bin}`}, a.label))),
+    el('option', {value: '__custom__'}, 'custom…'));
+  provSel.value = custom ? '__custom__' : v;
+  const ctl = el('div', {class: 'ctl'}, provSel);
+  if (!cli) {
+    ctl.append(el('span', {class: 'none wide'}, 'Runs exactly as typed. No model or effort flags are added.'));
   } else {
-    score = 25 - (min - count) * 4;                      // built for bigger teams
-    badge = `for ${min}+`; cls = 'dim';
+    const list = S.catalog.models[cli] || [], m = S.models[i] || '';
+    const typedModel = !!UI.customModel[i] || (!!m && !list.includes(m));
+    const modelSel = el('select', {class: 'mono', 'aria-label': `${role} model`, data: {k: `model-${i}`}, onchange: e => setModel(i, e.target.value)},
+      el('option', {value: ''}, 'default model'), list.map(x => el('option', {value: x}, x)),
+      el('option', {value: '__custom__'}, 'other model…'));
+    modelSel.value = typedModel ? '__custom__' : m;
+    ctl.append(modelSel);
+    const levels = S.catalog.thinking[cli] || [], e = S.efforts[i] || '';
+    if (levels.length) {
+      const effSel = el('select', {'aria-label': `${role} effort`, data: {k: `eff-${i}`}, onchange: ev => { S.efforts[i] = ev.target.value; changed(); }},
+        el('option', {value: ''}, 'default effort'), levels.map(x => el('option', {value: x}, x)),
+        e && !levels.includes(e) && el('option', {value: e}, e));      // keep a saved level this list does not offer
+      effSel.value = e;
+      ctl.append(effSel);
+    } else {
+      ctl.append(el('span', {class: 'none'}, cli === 'antigravity' ? 'in model name' : 'no effort setting'));
+    }
+    if (typedModel) ctl.append(el('input', {type: 'text', class: 'x mono', value: m, placeholder: 'model id', 'aria-label': `${role} model id`,
+      data: {k: `modelx-${i}`}, oninput: ev => { S.models[i] = ev.target.value.trim(); changed(); renderPreview(); }}));
   }
-  if (tpl.screen) {                                      // screen-shape preference
-    if (tpl.screen === aspect) { score += 30; if (cls === 'ok') cls = 'best'; }
-    else if (aspect !== 'square') { score -= 12; }
+  if (custom) ctl.append(el('input', {type: 'text', class: 'x mono', value: v, 'aria-label': `${role} launch command`,
+    placeholder: 'launch command, or claude@/path/to/wrapper', data: {k: `provx-${i}`},
+    oninput: ev => { S.providers[i] = ev.target.value.trim(); changed(); renderPreview(); }}));
+  const missing = cli && !v.includes('@') && S.clis[cli] === false;
+  return el('li', {class: `seat ${roleClass(role)}${i === S.focus ? ' on' : ''}`, onmouseenter: () => setFocus(i), onfocusin: () => setFocus(i)},
+    el('div', {class: 'who'}, el('b', null, role), el('span', null, roleNote(role))), ctl,
+    missing && el('p', {class: 'warn'}, `▲ ${CLI_NAME[cli] || cli} is not on Studio's PATH. This pane fails to start if your terminal cannot find it either.`));
+}
+function renderRoster(focusKey) {
+  const rs = roles();
+  $('count-val').textContent = S.count;
+  $('btn-dec').disabled = S.count <= 2;
+  $('btn-inc').disabled = S.count >= 6;
+  fill($('roster'), rs.map(seatRow));
+  const seated = PLANNER_MODES.includes(S.mode) && rs[rs.length - 1] === 'planner' && S.count < 5;
+  $('team-hint').textContent = seated ? `${modeName(S.mode)} is built around a planner, so the last seat is one.` : '';
+  const found = known().filter(p => S.clis[p]).map(p => CLI_NAME[p] || p), lost = known().filter(p => !S.clis[p]).map(p => CLI_NAME[p] || p);
+  fill($('clis-bar'),
+    found.length ? el('span', null, 'On PATH: ', el('b', null, found.join(', ')), lost.length ? `. Not found: ${lost.join(', ')}.` : '.')
+                 : el('span', {class: 'bad'}, '▲ No agent CLI is on PATH. Install claude, codex, opencode or agy, then reload.'),
+    el('button', {class: 'btn sm quiet', type: 'button', onclick: openModels}, 'Edit model list'));
+  if (focusKey) { const c = document.querySelector(`[data-k="${focusKey}"]`); if (c) c.focus(); }
+}
+function setProvider(i, value) {
+  UI.customProv[i] = value === '__custom__';
+  S.providers[i] = UI.customProv[i] ? '' : value;
+  S.models[i] = ''; S.efforts[i] = ''; UI.customModel[i] = false;   // another CLI: its own models and levels
+  changed();
+  renderRoster(UI.customProv[i] ? `provx-${i}` : `prov-${i}`);
+  renderPreview();
+}
+function setModel(i, value) {
+  UI.customModel[i] = value === '__custom__';
+  S.models[i] = UI.customModel[i] ? '' : value;
+  changed();
+  renderRoster(UI.customModel[i] ? `modelx-${i}` : `model-${i}`);
+  renderPreview();
+}
+function setCount(n) {
+  n = clamp(n, 2, 6);
+  if (n === S.count) return;
+  S.count = n;
+  fillSeats();
+  const t = S.templates.find(x => x.key === S.layout), best = bestLayout();
+  if (t && n > (t.max || 20) && best && best !== S.layout) {         // keep the layout you chose unless it no longer holds the crew
+    S.layout = best;
+    toast(`${t.name} holds up to ${t.max} seats, so the layout is now ${tplName(best)}.`);
   }
-  return { score, badge, cls };
-}
-// Gallery sections, in display order — mirrors the registry groups (templates.py: NORMAL/EXPERIMENTAL).
-const _GROUP_ORDER = ['normal', 'experimental'];
-const _GROUP_LABEL = { normal: 'Normal', experimental: 'Experimental' };
-// Section the gallery into a Normal + an Experimental group (registry `tpl.group`); fit-sort by
-// STATE.count + the monitor shape WITHIN each group; star the single best-fit card overall.
-function renderTemplates(templates) {
-  const gallery = document.getElementById('gallery');
-  gallery.innerHTML = '';
-  const count = STATE.count, aspect = _aspect();
-  const scored = templates.map(t => ({ t, f: _fitOf(t, count, aspect) }));
-  // the overall best fit gets the ★ and is the recommended key the stepper auto-selects
-  const best = scored.reduce((a, b) => (b && b.f.score > a.f.score ? b : a), scored[0]);
-  const bestKey = best ? best.t.key : null;
-  _GROUP_ORDER.forEach(group => {
-    const inGroup = scored.filter(s => (s.t.group || 'normal') === group)
-                          .sort((a, b) => b.f.score - a.f.score);
-    if (!inGroup.length) return;
-    const cap = document.createElement('div');
-    cap.className = 'tpl-group';
-    cap.textContent = `${_GROUP_LABEL[group] || group} · sorted for ${count} agent${count !== 1 ? 's' : ''} · ${aspect} screen`;
-    gallery.appendChild(cap);
-    inGroup.forEach(({ t: tpl, f }) => {
-      const key = tpl.key, name = tpl.name || key, desc = tpl.desc || '';
-      const el = document.createElement('div');
-      el.className = 'tpl' + (key === _selTemplate ? ' sel' : '');
-      el.dataset.key = key;
-      el.onclick = () => openModal(key);
-      el.innerHTML =
-        `<div class="ck">${ckPreview(key)}</div>` +
-        `<div class="tt"><div><b>${name}${key === bestKey ? STAR_SVG : ''}</b><small>${desc}</small></div>` +
-        `<span class="tag fit-${f.cls}">${f.badge}</span></div>`;
-      gallery.appendChild(el);
-    });
-  });
-  return bestKey;          // the recommended (best-fit) key
+  S.focus = Math.min(S.focus, n - 1);
+  changed();
+  renderRoster(); renderPreview(); renderGallery();
 }
 
-// ── render: mode cards ───────────────────────────────────────────────────────
-function renderModes(modes) {
-  const grid = document.getElementById('modes-grid');
-  grid.innerHTML = '';
-  modes.forEach((m, i) => {
-    const el = document.createElement('div');
-    el.className = 'mode' + (i === 0 ? ' sel' : '');
-    el.dataset.key = m.key;
-    el.onclick = () => selectMode(m.key);
-    const icon = MODE_ICONS[m.key] || MODE_ICONS.standard;
-    el.innerHTML = `<div class="ic">${icon}</div><b>${m.name}</b><p>${m.desc}</p>` +
-                   (m.when ? `<p class="when"><span>use when</span>${m.when}</p>` : '');
-    grid.appendChild(el);
-  });
-  if (modes.length > 0) STATE.mode = modes[0].key;
+// ── render: layout ───────────────────────────────────────────────────────────
+function miniSvg(layout) {                                     // numbers and fixed class names only
+  const rs = roles(), cls = p => p.k === 'tower' ? 'twr' : p.k === 'files' ? 'fls' : rs[p.i] === 'main' ? 'ld' : rs[p.i].includes('plan') ? 'pln' : '';
+  const box = el('span', {class: 'minibox'});
+  box.innerHTML = `<svg class="mini" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">` +
+    paneRects(layout, rs.length).panes.map(p => `<rect class="${cls(p)}" x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}"/>`).join('') + `</svg>`;
+  return box;
+}
+function renderGallery() {
+  const shape = screenShape(), best = bestLayout();
+  const list = S.templates.slice();
+  if (!list.some(t => t.key === S.layout))                     // a layout saved by an older version: keep it selectable
+    list.push({key: S.layout, name: S.layout, desc: 'Saved in this project. Not offered for new workspaces.'});
+  $('layout-cap').textContent = `fit is judged for ${S.count} seats on a ${shape} screen`;
+  fill($('gallery'), ...list.map(t => {
+    const f = fitOf(t, S.count, shape);
+    const tag = t.key === best ? el('span', {class: 'tag best'}, 'best fit')
+      : f.kind === 'tight' ? el('span', {class: 'tag warn', title: `Built for up to ${f.max} seats`}, `tight for ${S.count}`)
+      : f.kind === 'small' ? el('span', {class: 'tag'}, `for ${f.min}+`) : null;
+    return el('label', {class: 'tpl'},
+      el('input', {type: 'radio', name: 'layout', value: t.key, checked: t.key === S.layout,
+        onchange: () => { S.layout = t.key; changed(); renderPreview(); }}),
+      miniSvg(t.key), el('span', {class: 'nm'}, el('b', null, t.name || t.key), tag), el('span', {class: 'ds'}, t.desc || ''));
+  }));
 }
 
-function selectMode(key) {
-  STATE.mode = key;
-  document.querySelectorAll('#modes-grid .mode').forEach(el => {
-    el.classList.toggle('sel', el.dataset.key === key);
-  });
-  renderTeam();      // chief/warroom re-seat the last chip as the planner -- reflect it live
-  updateCmdPreview();
+// ── render: mode ─────────────────────────────────────────────────────────────
+const dash = s => String(s || '').replace(/\s--\s/g, ' — ');
+function renderModes() {
+  fill($('modes'), ...S.modes.map(m => el('label', {class: 'mode'},
+    el('input', {type: 'radio', name: 'mode', value: m.key, checked: m.key === S.mode, onchange: () => setMode(m.key)}),
+    el('b', null, m.name), el('span', {class: 'when'}, dash(m.when)), el('span', {class: 'desc'}, dash(m.desc)))));
+  renderModeHint();
+}
+function renderModeHint() {
+  fill($('mode-hint'), 'A running cockpit switches without a restart: ', el('code', null, `mk mode ${S.mode}`));
+}
+function setMode(key) {
+  S.mode = key;
+  changed();
+  renderModeHint(); renderRoster(); renderPreview(); renderGallery();   // chief, war room and venture re-seat the last chair
 }
 
-// ── render: team stepper + roster ────────────────────────────────────────────
-// Mirror of teamconfig.build_team's seating (the server is the source of truth at save): roles come
-// from the priority roster, and the planner-centric modes (chief/warroom) guarantee a planner seat --
-// when the count-slice lacks one (count < 5), the LAST seat becomes the planner (count >= 3 keeps a
-// worker). Labels must show what SAVE will produce, so every row label derives from this, not from a
-// previously-saved role.
-const ROLE_PRIORITY = ['main','worker1','worker2','worker3','planner','worker4','worker5','worker6'];
-function roleFor(i) {
-  const roles = ROLE_PRIORITY.slice(0, STATE.count);
-  if (['chief','warroom','venture'].includes(STATE.mode) && STATE.count >= 3 && !roles.includes('planner'))
-    roles[roles.length - 1] = 'planner';
-  return roles[i] || 'agent' + i;
-}
-
-function renderTeam() {
-  document.getElementById('count-val').textContent = STATE.count;
-  const others = STATE.count - 1;
-  document.getElementById('team-hint').innerHTML =
-    `agents &mdash; <b style="color:var(--text)">main</b> + ${others} from the priority roster`;
-
-  const roster = document.getElementById('roster');
-  roster.innerHTML = '';
-  for (let i = 0; i < STATE.count; i++) {
-    const agent = STATE.agents[i] || {provider:'claude'};
-    const role  = roleFor(i);
-    const prov  = STATE.providers[i] || agent.command || (agent.bin ? agent.provider+'·'+agent.bin.split('/').pop() : agent.provider) || 'claude';
-    const chip  = document.createElement('div');
-    chip.className = 'chip';
-    chip.innerHTML = `<span class="av ${avClass(role)}"></span>${role}<span class="prov">${prov}</span>`;
-    roster.appendChild(chip);
-  }
-  updateCmdPreview();
-}
-
-// ── render: profiles sidebar ─────────────────────────────────────────────────
-function renderProfiles(profs) {
-  STATE.profiles = profs;
-  const list = document.getElementById('profiles-list');
-  if (!profs.length) {
-    list.innerHTML = `<div style="color:var(--faint);font-size:12px;padding:4px 0">No saved profiles.</div>`;
-    return;
-  }
-  list.innerHTML = profs.map((p, i) =>
-    `<div class="prof ${i===0?'act':''}" data-idx="${i}" onclick="loadProfile(${i})">` +
-      `<div class="pic">${PROFILE_ICON}</div>` +
-      `<div class="meta">${p.name}<small>${p.count} agent${p.count!==1?'s':''} &middot; ${p.layout} &middot; ${p.providers?p.providers.join('/'):'claude'}</small></div>` +
-    `</div>`
-  ).join('');
-}
-
-// ── profile serialize / apply (shared by Save · Load · Import · Export) ───────
-// profileFromState: the CURRENT full config as one portable object — count, layout, mode,
-// per-agent providers/models/efforts, AND the workspace name. profileToState: the inverse,
-// loading such an object back into STATE. Both are DOM-free so the round-trip is lossless
-// and unit-testable; applyStateToUI() repaints the visible controls afterwards.
+// ── render: profiles ─────────────────────────────────────────────────────────
+// A profile is the whole crew as one portable object. profileFromState and profileToState are
+// DOM-free inverses, so Save, Load, Import and Export all round-trip the same fields.
 function profileFromState(name) {
-  const n = STATE.count;
-  return {
-    name,
-    count:  STATE.count,
-    layout: STATE.layout,
-    mode:   STATE.mode,
-    providers: STATE.providers.slice(0, n),
-    models:    STATE.models.slice(0, n),
-    efforts:   STATE.efforts.slice(0, n),
-    wsName:    STATE.name || '',
-  };
+  const n = S.count, own = S.name.trim();
+  return {name, count: n, layout: S.layout, mode: S.mode,
+    providers: S.providers.slice(0, n).map(x => x || ''), models: S.models.slice(0, n).map(x => x || ''),
+    efforts: S.efforts.slice(0, n).map(x => x || ''),
+    wsName: own && own !== S.folderName ? own : ''};           // a folder-derived name belongs to the folder, not the crew
 }
 function profileToState(p) {
   if (!p || typeof p !== 'object' || Array.isArray(p)) return false;
-  STATE.count  = Math.max(2, Math.min(Number(p.count) || STATE.count, 4));   // clamp 2-4
-  STATE.layout = p.layout || STATE.layout;
-  if (p.mode) STATE.mode = p.mode;
-  STATE.providers = Array.isArray(p.providers) ? p.providers.slice() : STATE.providers;
-  // absent per-agent arrays -> reset to provider defaults (never carry the previous team's over)
-  STATE.models    = Array.isArray(p.models)    ? p.models.slice()    : [];
-  STATE.efforts   = Array.isArray(p.efforts)   ? p.efforts.slice()   : [];
-  if (p.wsName != null) STATE.name = p.wsName;
+  const arr = v => Array.isArray(v) ? v.map(x => x == null ? '' : String(x)) : null;
+  S.count = clamp(Number(p.count) || S.count, 2, 6);
+  if (p.layout) S.layout = String(p.layout);
+  if (S.modes.some(m => m.key === p.mode)) S.mode = p.mode;
+  S.providers = arr(p.providers) || S.providers;               // absent: keep the CLIs on the bench
+  S.models = arr(p.models) || [];                              // absent: provider defaults, never the previous crew's
+  S.efforts = arr(p.efforts) || [];
+  for (let i = 0; i < S.count; i++) { if (S.models[i] == null) S.models[i] = ''; if (S.efforts[i] == null) S.efforts[i] = ''; }
+  UI.customProv = []; UI.customModel = [];
+  const ws = p.wsName == null ? '' : String(p.wsName).trim();
+  if (ws) { S.name = ws; S.nameDirty = true; }
+  fillSeats();
   return true;
 }
-function applyStateToUI() {
-  renderTeam();
-  renderTemplates(STATE.templates);
-  selectTemplate(STATE.layout);
-  selectMode(STATE.mode);
-  const wsEl = document.getElementById('ws-name');
-  if (STATE.name) { wsEl.textContent = STATE.name; wsEl.style.display = ''; }
-  else { wsEl.style.display = 'none'; }
-}
-
-function loadProfile(idx) {
-  if (!profileToState(STATE.profiles[idx])) return;
-  // highlight active
-  document.querySelectorAll('#profiles-list .prof').forEach((el,i) => {
-    el.classList.toggle('act', i === idx);
-  });
-  applyStateToUI();     // restore the FULL config (count, layout, mode, per-agent fields, name)
-}
-
-function selectTemplate(key) {
-  _selTemplate = key;
-  document.querySelectorAll('#gallery .tpl[data-key]').forEach(el => {
-    el.classList.toggle('sel', el.dataset.key === key);
-  });
-  STATE.layout = key;
-  updateCmdPreview();
-}
-
-// ── modal ────────────────────────────────────────────────────────────────────
-function _esc(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
-function _modelCell(i, provider, cur) {                 // per-CLI model <select> + a 'custom…' overflow box
-  const models = STATE.providerModels[provider] || [];
-  const isCustom = !!cur && !models.includes(cur);
-  const opts = `<option value="">default model</option>` +
-    models.map(m => `<option value="${_esc(m)}" ${m===cur?'selected':''}>${_esc(m)}</option>`).join('') +
-    `<option value="__custom__" ${isCustom?'selected':''}>custom…</option>`;
-  return `<select class="m-model" data-idx="${i}">${opts}</select>` +
-         `<input class="m-model-x" placeholder="model id" value="${isCustom?_esc(cur):''}" ${isCustom?'':'hidden'}>`;
-}
-function _bindModelCell(cell) {                          // reveal the text box only when 'custom…' is chosen
-  const sel = cell.querySelector('.m-model'), inp = cell.querySelector('.m-model-x');
-  sel.onchange = () => { if (sel.value === '__custom__') { inp.hidden = false; inp.focus(); } else inp.hidden = true; };
-}
-function _readModel(cell) {
-  const sel = cell.querySelector('.m-model'), inp = cell.querySelector('.m-model-x');
-  return sel.value === '__custom__' ? (inp.value || '').trim() : sel.value;
-}
-function _thinkControl(i, provider, cur) {              // thinking <select> for claude/codex; else '—'
-  const lv = STATE.providerThinking[provider] || [];
-  if (!lv.length) return `<span class="m-nothink" data-idx="${i}">—</span>`;
-  return `<select class="m-think" data-idx="${i}"><option value="">think: auto</option>` +
-    lv.map(l => `<option value="${l}" ${l===cur?'selected':''}>${l}</option>`).join('') + `</select>`;
-}
-
-async function openModal(key) {
-  // re-fetch detected CLIs + the model/thinking catalog so the dropdowns are never stale
-  try {
-    const c = await (await fetch('/api/clis')).json();
-    STATE.clis = c.clis || STATE.clis;
-    STATE.providerModels = c.models || STATE.providerModels;
-    STATE.providerThinking = c.thinking || STATE.providerThinking;
-    STATE.accounts = c.accounts || STATE.accounts;
-    renderClis(STATE.clis);
-  } catch (e) {}
-  selectTemplate(key);
-  _modalKey = key;
-
-  const tpl = STATE.templates.find(t => t.key === key) || {key, name: key, tag:'', desc:''};
-  document.getElementById('m-title').textContent = 'Configure: ' + (tpl.name || key);
-  document.getElementById('m-desc').textContent  = "Assign a provider, model, and thinking level to each pane.";
-  document.getElementById('m-prev').innerHTML    = `<div class="ck">${ckPreview(key)}</div>`;
-  document.getElementById('m-cap').textContent   = tpl.desc || ('Layout: ' + (tpl.name||key));
-  document.getElementById('m-foot').textContent  = 'Layout: ' + (tpl.name||key) + ' · ' + STATE.count + ' agents';
-
-  const providerNames = Object.entries(STATE.clis).filter(([,on]) => on).map(([name]) => name);
-  if (!providerNames.length) providerNames.push('claude'); // fallback
-  // Dropdown = detected built-in providers, then account wrappers (accounts.json) as `provider@bin`
-  // options with a friendly label. build_team parses `provider@bin` back to provider + bin, keeping the
-  // provider's hook/delivery while running that account's wrapper.
-  const provOptList = providerNames.map(p => ({value: p, label: p}))
-        .concat((STATE.accounts||[]).map(a => ({value: a.provider + '@' + a.bin, label: a.label})));
-  const optValues = provOptList.map(o => o.value);
-  const provOf = (v) => (v && v.indexOf('@') > 0 && !v.startsWith('/')) ? v.split('@')[0] : v;  // provider@bin -> provider
-
-  const agentsEl = document.getElementById('m-agents');
-  agentsEl.innerHTML = '';
-  for (let i = 0; i < STATE.count; i++) {
-    const agent = STATE.agents[i] || {role: i===0?'main':'agent'+i, provider:'claude'};
-    const role  = roleFor(i);           // mode-aware seating (chief/warroom put the planner in the last seat)
-    const curProv  = STATE.providers[i] || agent.command || (agent.bin ? agent.provider+'@'+agent.bin : agent.provider) || providerNames[0];
-    const baseProv = provOf(curProv);   // underlying provider -> drives the model / thinking dropdowns
-    let   curModel = STATE.models[i]  != null ? STATE.models[i]  : (agent.model  || '');
-    if (baseProv !== 'claude' && String(curModel).startsWith('claude-')) curModel = '';  // stale roster default -> show the dropdown, not custom
-    const curEff   = STATE.efforts[i] != null ? STATE.efforts[i] : (agent.effort || '');
-    const roleDesc = i===0 ? 'lead' : (role.includes('rev') ? 'review gate'
-                     : role.includes('plan') ? 'read-only planner' : 'worker');
-    // A provider string not in the option list (and not 'custom') is a raw CUSTOM launch command
-    // (build_team runs it verbatim) -> show it in the editable box, not as a phantom dropdown pick.
-    const isCustomProv = !!curProv && curProv !== 'custom' && !optValues.includes(curProv);
-    const provOpts = provOptList.map(o => `<option value="${_esc(o.value)}" ${o.value===curProv?'selected':''}>${_esc(o.label)}</option>`).join('')
-                   + `<option value="custom" ${(isCustomProv||curProv==='custom')?'selected':''}>custom…</option>`;
-    const row = document.createElement('div');
-    row.className = 'arow';
-    row.innerHTML =
-      `<span class="av ${avClass(role)}"></span>` +
-      `<div class="who"><b>${role}</b><small>${roleDesc}</small></div>` +
-      `<select class="m-prov" data-idx="${i}">${provOpts}</select>` +
-      `<input class="m-prov-x" placeholder="launch command, or provider@/path/to/wrapper (e.g. claude@/home/you/bin/claudew)" ` +
-      `value="${isCustomProv?_esc(curProv):''}" ${isCustomProv?'':'hidden'}>` +
-      `<span class="m-modelcell" data-idx="${i}">${_modelCell(i, isCustomProv?'custom':baseProv, curModel)}</span>` +
-      _thinkControl(i, isCustomProv?'custom':baseProv, curEff);
-    agentsEl.appendChild(row);
-    _bindModelCell(row.querySelector('.m-modelcell'));
-    // provider change -> rebuild that row's model dropdown + thinking control for the new CLI
-    row.querySelector('.m-prov').onchange = (e) => {
-      const p = e.target.value;
-      const x = row.querySelector('.m-prov-x');
-      if (p === 'custom') { x.hidden = false; x.focus(); } else { x.hidden = true; }
-      const mp = p === 'custom' ? 'custom' : provOf(p);   // model/thinking follow the underlying provider
-      const cell = row.querySelector('.m-modelcell');
-      cell.innerHTML = _modelCell(i, mp, '');
-      _bindModelCell(cell);
-      (row.querySelector('.m-think') || row.querySelector('.m-nothink')).outerHTML = _thinkControl(i, mp, '');
-    };
+function renderProfiles() {
+  const box = $('profiles-list');
+  if (!S.profiles.length) {
+    fill(box, el('p', {class: 'empty'}, 'No profiles yet. Save this crew to load it in another project.'));
+    return;
   }
-  document.getElementById('scrim').classList.add('show');
+  fill(box, ...S.profiles.map(p => el('button', {type: 'button', class: 'prof' + (p.name === S.loaded ? ' on' : ''), onclick: () => loadProfile(p)},
+    el('b', null, p.name), el('span', null, `${p.count} seats, ${tplName(p.layout)}, ${modeName(p.mode || 'standard')}`),
+    el('i', null, p.name === S.loaded ? 'loaded' : 'load'))));
+}
+function loadProfile(p) {
+  const before = S.name;
+  if (!profileToState(p)) return;
+  S.loaded = p.name;
+  renderAll();
+  toast(`Loaded “${p.name}”.` + (S.name !== before ? ` It also names the workspace ${S.name}.` : '') + ' Nothing is saved until you launch.');
+}
+async function reloadProfiles() { S.profiles = (await api('/api/profiles')).profiles || []; renderProfiles(); }
+const slug = s => s.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'profile';   // profiles._slug
+
+// ── render: launch bar ───────────────────────────────────────────────────────
+function renderLaunch() {
+  const r = S.run, light = $('run-state');
+  $('sum-1').textContent = `${S.count} seats, ${tplName(S.layout)}, ${modeName(S.mode)} mode`;
+  const other = r.project ? r.project.split(/[\\/]/).filter(Boolean).pop() : 'another project';
+  let text, line;
+  if (S.offline) {
+    text = 'Studio is not answering';
+    line = ['The local server stopped. Run ', el('code', null, 'mk studio'), ' again, then reload this page.'];
+  } else if (r.running && r.here) {
+    text = 'Cockpit running';
+    line = ['Relaunching rebuilds this cockpit with the crew above. Agent sessions resume.'];
+  } else if (r.running) {
+    text = `Cockpit running for ${other}`;
+    line = ['MKCREW runs one cockpit at a time. Launching here closes that one first.'];
+  } else {
+    text = 'No cockpit running';
+    line = [S.configured ? 'Saves this crew to ' : 'New project. Launch creates ', el('code', null, '.mkcrew/team.config'),
+            ', then opens a terminal running ', el('code', null, 'mk start'), '.'];
+  }
+  light.className = 'run' + (S.offline ? ' off' : r.running ? ' on' : '');
+  light.title = r.running && r.project ? r.project : '';
+  $('run-text').textContent = text;
+  fill($('sum-2'), ...line);
+  $('launch-text').textContent = S.busy ? 'Opening…' : r.running && r.here ? 'Relaunch cockpit' : 'Launch cockpit';
+  $('btn-launch').disabled = S.busy || S.offline;
+  $('btn-kill').disabled = S.busy || S.offline || !r.running;
+}
+function notice(msg) { const n = $('notice'); n.hidden = !msg; n.textContent = msg ? `▲ ${msg}` : ''; }
+function changed() {                                           // any edit: the loaded-profile mark no longer holds
+  if (S.loaded) { S.loaded = null; renderProfiles(); }
+  renderLaunch();
+}
+function renderAll() { renderHeader(); renderRoster(); renderPreview(); renderGallery(); renderModes(); renderProfiles(); renderLaunch(); }
+
+// ── cockpit status ───────────────────────────────────────────────────────────
+async function refreshStatus() {
+  try { S.run = await api('/api/status'); S.offline = false; }
+  catch (e) { S.offline = true; }
+  renderLaunch();
+}
+setInterval(() => { if (!document.hidden) refreshStatus(); }, 4000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshStatus(); });
+
+// ── dialogs + toast ──────────────────────────────────────────────────────────
+function openDialog(d) { d.returnValue = ''; d.showModal(); return new Promise(done => d.addEventListener('close', () => done(d.returnValue === 'ok'), {once: true})); }
+function ask(title, text, okLabel, danger) {
+  $('da-t').textContent = title; $('da-p').textContent = text;
+  const ok = $('da-ok'); ok.textContent = okLabel; ok.className = 'btn ' + (danger ? 'danger' : 'primary');
+  return openDialog($('dlg-ask'));
+}
+document.querySelectorAll('dialog [data-close]').forEach(b => { b.onclick = () => b.closest('dialog').close(''); });
+let toastTimer;
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 4200);
 }
 
-function confirmModal() {
-  document.querySelectorAll('#m-agents .arow').forEach((row, i) => {
-    // 'custom' saves the visible COMMAND (runs verbatim; blank -> roster default), never the
-    // literal word "custom" (build_team would have launched the string "custom" as a command).
-    const sel = row.querySelector('.m-prov'), x = row.querySelector('.m-prov-x');
-    STATE.providers[i] = sel.value === 'custom' ? (x.value || '').trim() : sel.value;
-    STATE.models[i]    = _readModel(row.querySelector('.m-modelcell'));
-    const th = row.querySelector('.m-think');
-    STATE.efforts[i]   = th ? th.value : '';
-  });
-  renderTeam();
-  closeModal();
-}
-
-function closeModal() {
-  document.getElementById('scrim').classList.remove('show');
-}
-
-// ── model-list editor (user-editable suggestions → models.json) ───────────────
-function openModelsEditor() {
-  document.getElementById('em-text').value =
-    JSON.stringify({models: STATE.providerModels, thinking: STATE.providerThinking}, null, 2);
-  document.getElementById('em-err').textContent = '';
-  document.getElementById('em-scrim').classList.add('show');
-}
-function closeModelsEditor() { document.getElementById('em-scrim').classList.remove('show'); }
-async function resetModelsEditor() {
-  await api('/api/models', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({reset:true})});
-  const c = await api('/api/clis');                 // now returns the code defaults
-  STATE.providerModels = c.models || {}; STATE.providerThinking = c.thinking || {};
-  document.getElementById('em-text').value =
-    JSON.stringify({models: STATE.providerModels, thinking: STATE.providerThinking}, null, 2);
-  showToast('Reset to defaults.');
-}
-async function saveModelsEditor() {
-  let data;
-  try { data = JSON.parse(document.getElementById('em-text').value); }
-  catch (e) { document.getElementById('em-err').textContent = 'Invalid JSON: ' + e.message; return; }
-  await api('/api/models', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(data)});
-  STATE.providerModels   = data.models   || {};
-  STATE.providerThinking = data.thinking || {};
-  closeModelsEditor();
-  if (document.getElementById('scrim').classList.contains('show')) openModal(_modalKey);  // refresh open rows
-  showToast('Model list saved.');
-}
-
-// Escape key: handled below alongside folder picker
-
-// ── stepper ──────────────────────────────────────────────────────────────────
-function _stepCount(d) {
-  const n = STATE.count + d;
-  if (n < 2 || n > 6) return;   // 2-6 agents: 1 agent = no teammate to delegate to; >6 outgrows every layout
-  STATE.count = n;
-  renderTeam();
-  const best = renderTemplates(STATE.templates);   // re-sort for the new size...
-  if (best) selectTemplate(best);                  // ...and pick the best fit
-}
-document.getElementById('btn-dec').onclick = () => _stepCount(-1);
-document.getElementById('btn-inc').onclick = () => _stepCount(1);
-
-// ── launch ───────────────────────────────────────────────────────────────────
-document.getElementById('btn-kill').onclick = async () => {
-  const btn = document.getElementById('btn-kill');
-  if (btn.disabled) return;
-  btn.disabled = true; btn.style.opacity = '0.55';
+// ── launch + stop ────────────────────────────────────────────────────────────
+async function launchCockpit() {
+  if (S.busy || S.offline || document.querySelector('dialog[open]')) return;
+  S.busy = true; notice(''); renderLaunch();
   try {
-    const res = await api('/api/kill', {method: 'POST'});
-    showToast(res && res.ok ? 'Cockpit stopped (mk kill).' : 'Stop failed: ' + ((res && res.error) || 'unknown'));
-  } catch (e) { showToast('Stop failed: ' + e.message); }
-  setTimeout(() => { btn.disabled = false; btn.style.opacity = ''; }, 1500);
-};
-
-document.getElementById('btn-launch').onclick = async () => {
-  const btn = document.getElementById('btn-launch');
-  if (btn.disabled) return;
-  btn.disabled = true;
-  btn.style.opacity = '0.55';
-  setTimeout(() => { btn.disabled = false; btn.style.opacity = ''; }, 3000);
-  try {
-    await api('/api/config', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({count: STATE.count, layout: STATE.layout, mode: STATE.mode,
-        providers: STATE.providers.slice(0, STATE.count),
-        models: STATE.models.slice(0, STATE.count),
-        efforts: STATE.efforts.slice(0, STATE.count)}),
-    });
-    let res = await api('/api/launch', {method: 'POST'});
-    if (res && res.conflict) {
-      // a DIFFERENT project's cockpit is live — confirm before replacing it (MKCREW is one-at-a-time)
-      const other = res.running_project || 'another project';
-      if (!confirm('A cockpit is already running for:\n\n' + other + '\n\nMKCREW runs one cockpit at a time, so launching THIS project will close that one. Continue?')) {
-        btn.disabled = false; btn.style.opacity = ''; return;   // cancelled — the other project stays up
-      }
-      res = await api('/api/launch', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({force: true})});
+    const n = S.count, body = {count: n, layout: S.layout, mode: S.mode, providers: S.providers.slice(0, n),
+      models: S.models.slice(0, n), efforts: S.efforts.slice(0, n)};
+    if (S.nameDirty && S.name.trim()) body.name = S.name.trim();
+    const saved = await api('/api/config', body);
+    if (!saved.ok) throw new Error(saved.error || 'the crew was not saved');
+    S.nameDirty = false; S.configured = true;
+    let res = await api('/api/launch', {});
+    if (res.conflict) {                                        // another project's cockpit is live: ask before replacing it
+      const go = await ask('Close the other cockpit?', `A cockpit is running for ${res.running_project || 'another project'}. MKCREW runs one at a time, so launching here closes it. Its agent sessions resume the next time you launch it.`, 'Close it and launch here');
+      if (!go) return;
+      res = await api('/api/launch', {force: true});
     }
-    showToast('Opening cockpit in a new terminal — it builds the team, then drops you in.');
-  } catch(e) {
-    showToast('Launch failed: ' + e.message);
-    btn.disabled = false;
-    btn.style.opacity = '';
+    if (!res.ok) { notice(`Launch failed: ${res.error || 'the cockpit did not start'}`); return; }
+    toast(res.was_running ? 'Rebuilding the cockpit in a new terminal. Agent sessions resume.'
+                          : 'Opening the cockpit in a new terminal. It builds the team, then drops you in.');
+  } catch (e) {
+    notice(`Launch failed: ${e.message}`);
+  } finally {
+    S.busy = false; await refreshStatus();
+    setTimeout(refreshStatus, 2500);                           // the terminal takes a moment to bring the session up
   }
-};
-
-// ── save profile ─────────────────────────────────────────────────────────────
-document.getElementById('btn-save-profile').onclick = async () => {
-  const name = prompt('Profile name:');
-  if (!name || !name.trim()) return;
+}
+async function stopCockpit() {
+  if (S.busy || !S.run.running) return;
+  const what = S.run.here ? 'this project' : (S.run.project || 'another project');
+  if (!await ask('Stop the cockpit?', `This ends the cockpit for ${what} and stops its agents mid-task. Their sessions resume on the next launch.`, 'Stop cockpit', true)) return;
+  S.busy = true; notice(''); renderLaunch();
   try {
-    // NOTE: sends the COMPLETE config; the backend POST /api/profiles currently persists only
-    // count/layout/providers (see report) — widen it to keep models/efforts/mode/wsName too.
-    await api('/api/profiles', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(profileFromState(name.trim())),
-    });
-    const {profiles: profs} = await api('/api/profiles');
-    renderProfiles(profs);
-    showToast('Profile “' + name.trim() + '” saved.');
-  } catch(e) {
-    showToast('Save failed: ' + e.message);
-  }
-};
+    const res = await api('/api/kill', {});
+    if (res.ok) toast('Cockpit stopped.'); else notice(`Stop failed: ${res.error || 'mk kill did not finish'}`);
+  } catch (e) { notice(`Stop failed: ${e.message}`); }
+  finally { S.busy = false; await refreshStatus(); }
+}
+$('btn-launch').onclick = launchCockpit;
+$('btn-kill').onclick = stopCockpit;
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); launchCockpit(); } });
+if (/Mac|iPhone|iPad/.test(navigator.platform)) $('launch-kbd').textContent = '⌘ ↵';
 
-// ── import / export (JSON file, client-side) ─────────────────────────────────
-document.getElementById('btn-import-profile').onclick = () => {
-  const inp = document.createElement('input');
-  inp.type = 'file'; inp.accept = '.json,application/json';
-  inp.onchange = async () => {
-    const file = inp.files[0];
+// ── profiles: save, import, export ───────────────────────────────────────────
+$('btn-save-profile').onclick = async () => {
+  const inp = $('dp-name'), note = $('dp-note'), ok = $('dp-ok');
+  const sync = () => {
+    const hit = inp.value.trim() && S.profiles.find(p => slug(p.name) === slug(inp.value.trim()));
+    note.textContent = hit ? `This replaces the saved profile “${hit.name}”.` : '';
+    ok.textContent = hit ? 'Replace profile' : 'Save profile';
+    ok.disabled = !inp.value.trim();
+  };
+  inp.value = S.loaded || ''; inp.oninput = sync; sync();
+  if (!await openDialog($('dlg-profile'))) return;
+  const name = inp.value.trim();
+  try {
+    await api('/api/profiles', profileFromState(name));
+    await reloadProfiles();
+    toast(`Saved “${name}”.`);
+  } catch (e) { notice(`The profile was not saved: ${e.message}`); }
+};
+$('btn-import-profile').onclick = () => {
+  const pick = el('input', {type: 'file', accept: '.json,application/json'});
+  pick.onchange = async () => {
+    const file = pick.files[0];
     if (!file) return;
     try {
       const data = JSON.parse(await file.text());
-      if (!profileToState(data)) { showToast('Import failed: not a MKCREW profile.'); return; }
-      applyStateToUI();                                       // restore the FULL config into the live UI
+      if (!profileToState(data)) { notice(`${file.name} is not a MKCREW profile.`); return; }
       const name = (data.name && String(data.name).trim()) || 'imported';
-      await api('/api/profiles', {                            // + persist it into the saved list
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(profileFromState(name)),
-      });
-      const {profiles: profs} = await api('/api/profiles');
-      renderProfiles(profs);
-      showToast('Imported “' + name + '”.');
-    } catch(e) { showToast('Import failed: ' + e.message); }  // bad JSON / unreadable file -> graceful toast
+      S.loaded = name;
+      renderAll();
+      await api('/api/profiles', profileFromState(name));       // and keep it in the saved list
+      await reloadProfiles();
+      toast(`Imported “${name}”. Nothing is saved to the project until you launch.`);
+    } catch (e) { notice(`${file.name} could not be read as a profile: ${e.message}`); }
   };
-  inp.click();
+  pick.click();
 };
-
-document.getElementById('btn-export-profile').onclick = () => {
-  const data = JSON.stringify(profileFromState('exported'), null, 2);   // ALL fields (lossless with import)
-  const blob = new Blob([data], {type: 'application/json'});
-  const a    = document.createElement('a');
-  a.href     = URL.createObjectURL(blob);
-  a.download = 'mkcrew-profile.json';
+$('btn-export-profile').onclick = () => {
+  const blob = new Blob([JSON.stringify(profileFromState(wsLabel()), null, 2)], {type: 'application/json'});
+  const a = el('a', {href: URL.createObjectURL(blob), download: 'mkcrew-profile.json'});
   a.click();
-  URL.revokeObjectURL(a.href);   // free the blob URL once the download has started
+  URL.revokeObjectURL(a.href);
 };
 
-// ── toast ────────────────────────────────────────────────────────────────────
-let _toastTimer = null;
-function showToast(msg) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
-}
+// ── model list editor ────────────────────────────────────────────────────────
+const catalogText = () => JSON.stringify(S.catalog, null, 2);
+function modelsNote(msg, bad) { const n = $('dm-err'); n.textContent = msg; n.className = bad ? 'err' : ''; }
+function openModels() { $('dm-text').value = catalogText(); modelsNote(''); $('dlg-models').showModal(); $('dm-text').scrollTop = 0; }
+$('dm-save').onclick = async () => {
+  let data;
+  try { data = JSON.parse($('dm-text').value); }
+  catch (e) { modelsNote(`This is not valid JSON: ${e.message}`, true); return; }
+  if (!data || typeof data !== 'object' || Array.isArray(data)) { modelsNote('Expected an object with "models" and "thinking".', true); return; }
+  try {
+    await api('/api/models', data);
+    S.catalog = {models: data.models || {}, thinking: data.thinking || {}};
+    $('dlg-models').close();
+    renderRoster();
+    toast('Model list saved.');
+  } catch (e) { modelsNote(`The list was not saved: ${e.message}`, true); }
+};
+$('dm-reset').onclick = async () => {
+  try {
+    await api('/api/models', {reset: true});
+    const c = await api('/api/clis');                           // now the built-in defaults
+    S.catalog = {models: c.models || {}, thinking: c.thinking || {}};
+    $('dm-text').value = catalogText(); $('dm-text').scrollTop = 0;
+    renderRoster();
+    modelsNote('Back to the built-in list. Your saved edits are gone.');
+  } catch (e) { modelsNote(`Reset failed: ${e.message}`, true); }
+};
 
-// ── boot ─────────────────────────────────────────────────────────────────────
+// ── project folder ───────────────────────────────────────────────────────────
+// The native folder dialog first; the in-page list only when the system has none. Cancel keeps the folder.
+let folderAt = '';
+async function showDirs(path) {
+  const d = await api('/api/dirs' + (path ? `?path=${encodeURIComponent(path)}` : ''));
+  folderAt = d.path;
+  $('df-path').textContent = d.path;
+  fill($('df-list'),
+    d.parent && d.parent !== d.path && el('button', {type: 'button', class: 'up', onclick: () => showDirs(d.parent).catch(folderError)}, '↑ up one level'),
+    ...d.dirs.map(x => el('button', {type: 'button', onclick: () => showDirs(x.path).catch(folderError)}, x.name)),
+    !d.dirs.length && el('p', {class: 'empty', style: 'padding:10px 12px'}, 'No folders in here.'));
+}
+const folderError = e => notice(`That folder could not be opened: ${e.message}`);
+$('df-use').onclick = async () => {
+  try {
+    const res = await api('/api/project', {path: folderAt});
+    if (!res.ok) { notice(`That folder was not set: ${res.error || 'unknown error'}`); return; }
+    $('dlg-folder').close();
+    await boot();
+    toast('Project folder changed.');
+  } catch (e) { folderError(e); }
+};
+$('btn-change-folder').onclick = async () => {
+  const btn = $('btn-change-folder');
+  btn.disabled = true; btn.textContent = 'Waiting for the folder dialog…';
+  let res = null;
+  try { res = await api('/api/pick-folder', {}); } catch (e) {}
+  btn.disabled = false; btn.textContent = 'Change folder';
+  if (res && res.ok) { await boot(); toast('Project folder changed.'); }
+  else if (!res || res.error !== 'no folder selected') {
+    try { await showDirs(S.path); $('dlg-folder').showModal(); } catch (e) { folderError(e); }
+  }
+};
+
+// ── wiring + boot ────────────────────────────────────────────────────────────
+$('btn-dec').onclick = () => setCount(S.count - 1);
+$('btn-inc').onclick = () => setCount(S.count + 1);
+$('ws-name').oninput = e => { S.name = e.target.value; S.nameDirty = true; renderHeader(); renderPreview(); changed(); };
+let lastShape = screenShape();
+window.addEventListener('resize', () => { const s = screenShape(); if (s !== lastShape) { lastShape = s; renderGallery(); } });
+
 async function boot() {
   try {
-    const [clisResp, {templates}, {modes}, cfg, {profiles: profs}, projData] = await Promise.all([
-      api('/api/clis'),
-      api('/api/templates'),
-      api('/api/modes'),
-      api('/api/config'),
-      api('/api/profiles'),
-      api('/api/project'),
-    ]);
-
-    STATE.clis            = clisResp.clis;
-    STATE.providerModels  = clisResp.models   || {};
-    STATE.providerThinking= clisResp.thinking || {};
-    STATE.accounts        = clisResp.accounts || [];
-    STATE.templates = templates;
-    STATE.modes     = modes;
-    STATE.agents    = cfg.agents    || [];
-    STATE.layout    = cfg.layout    || 'hub';
-    STATE.count     = Math.max(2, Math.min(STATE.agents.length || 4, 6));   // clamp 2-6
-    STATE.providers = STATE.agents.map(a => a.command || a.provider || 'claude');
-    STATE.models    = STATE.agents.map(a => a.model  || '');
-    STATE.efforts   = STATE.agents.map(a => a.effort || '');
-
-    // show project path from /api/project
-    document.getElementById('cwd-label').textContent = projData.path || window.location.host;
-    // workspace identity (FIX #4): label the cockpit by its name, not a bare 'main'
-    STATE.name = cfg.name || '';
-    const wsEl = document.getElementById('ws-name');
-    if (STATE.name) { wsEl.textContent = STATE.name; wsEl.style.display = ''; }
-    else { wsEl.style.display = 'none'; }
-
-    renderClis(STATE.clis);
-    renderTemplates(templates);
-    renderModes(modes);
-    renderTeam();
-    renderProfiles(profs);
-    // select the layout from config in the gallery
-    selectTemplate(STATE.layout);
-  } catch(e) {
-    console.error('boot failed:', e);
-    document.getElementById('cwd-label').textContent = 'error: ' + e.message;
+    const [c, t, m, cfg, pr, proj] = await Promise.all(
+      ['/api/clis', '/api/templates', '/api/modes', '/api/config', '/api/profiles', '/api/project'].map(u => api(u)));
+    S.clis = c.clis || {}; S.accounts = c.accounts || [];
+    S.catalog = {models: c.models || {}, thinking: c.thinking || {}};
+    S.templates = t.templates || []; S.modes = m.modes || []; S.profiles = pr.profiles || [];
+    S.path = proj.path || ''; S.folderName = S.path.split(/[\\/]/).filter(Boolean).pop() || '';
+    S.agents = cfg.agents || []; S.configured = !!cfg.configured;
+    S.layout = cfg.layout || 'main-vertical';
+    S.mode = S.modes.some(x => x.key === cfg.mode) ? cfg.mode : 'standard';
+    S.count = clamp(S.agents.length || 4, 2, 6);
+    S.name = cfg.name || ''; S.nameDirty = false;
+    S.providers = []; S.models = []; S.efforts = []; UI.customProv = []; UI.customModel = [];
+    S.loaded = null; S.focus = 0;
+    fillSeats();
+    notice('');
+    renderAll();
+    refreshStatus();
+  } catch (e) {
+    fill($('bench'), el('div', {class: 'fatal'},
+      el('h2', null, 'Studio cannot reach its server'),
+      el('p', null, 'This page is open, but ', el('code', null, 'mk studio'), ' is not answering. Start it again in a terminal, then reload.'),
+      el('p', {class: 'mono'}, String(e.message || e)),
+      el('button', {class: 'btn', type: 'button', onclick: () => location.reload()}, 'Reload')));
+    S.offline = true; renderLaunch();
   }
 }
-
-// ── folder picker ─────────────────────────────────────────────────────────────
-let _fpCurrentPath = '';
-
-async function openFolderPicker() {
-  try {
-    const proj = await api('/api/project');
-    await loadDirs(proj.path);
-    document.getElementById('fp-scrim').classList.add('show');
-  } catch(e) {
-    showToast('Could not open folder picker: ' + e.message);
-  }
-}
-
-async function loadDirs(path) {
-  try {
-    const url = '/api/dirs' + (path ? '?path=' + encodeURIComponent(path) : '');
-    const data = await api(url);
-    _fpCurrentPath = data.path;
-    document.getElementById('fp-path').textContent = data.path;
-    document.getElementById('fp-foot').textContent = data.path;
-
-    const list = document.getElementById('fp-list');
-    list.innerHTML = '';
-
-    // "up" entry
-    if (data.parent && data.parent !== data.path) {
-      const upEl = document.createElement('div');
-      upEl.className = 'fp-entry up';
-      upEl.innerHTML =
-        `<svg class="fp-ic i" style="width:14px;height:14px" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>` +
-        `<span>&#8679; up</span>`;
-      upEl.onclick = () => loadDirs(data.parent);
-      list.appendChild(upEl);
-    }
-
-    if (data.dirs.length === 0 && !(data.parent && data.parent !== data.path)) {
-      const empty = document.createElement('div');
-      empty.style.cssText = 'color:var(--faint);font-size:12px;padding:8px 10px';
-      empty.textContent = 'No subfolders here.';
-      list.appendChild(empty);
-    }
-
-    data.dirs.forEach(d => {
-      const el = document.createElement('div');
-      el.className = 'fp-entry';
-      el.innerHTML =
-        `<svg class="fp-ic i" style="width:14px;height:14px" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>` +
-        `<span>${d.name}</span>`;
-      el.onclick = () => loadDirs(d.path);
-      list.appendChild(el);
-    });
-  } catch(e) {
-    showToast('Navigation error: ' + e.message);
-  }
-}
-
-async function useFolderPicker() {
-  if (!_fpCurrentPath) return;
-  try {
-    const res = await api('/api/project', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({path: _fpCurrentPath}),
-    });
-    if (!res.ok) {
-      showToast('Could not set folder: ' + (res.error || 'unknown error'));
-      return;
-    }
-    closeFolderPicker();
-    document.getElementById('cwd-label').textContent = res.path || _fpCurrentPath;
-    showToast('Project folder changed. Reloading…');
-    await boot();
-  } catch(e) {
-    showToast('Failed to set folder: ' + e.message);
-  }
-}
-
-function closeFolderPicker() {
-  document.getElementById('fp-scrim').classList.remove('show');
-}
-
-// "Change folder" → native Windows folder picker (real Explorer dialog). Falls back to the in-browser
-// list only if the native dialog can't run; a plain cancel just keeps the current folder.
-async function changeFolder() {
-  let res = null;
-  try { res = await api('/api/pick-folder', {method: 'POST'}); } catch (e) {}
-  if (res && res.ok) {
-    document.getElementById('cwd-label').textContent = res.path;
-    showToast('Project folder set. Reloading…');
-    await boot();
-  } else if (!res || (res.error && res.error !== 'no folder selected')) {
-    openFolderPicker();   // native dialog unavailable → in-browser fallback
-  }
-}
-
-document.getElementById('btn-change-folder').onclick = changeFolder;
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeModal(); closeFolderPicker(); }
-});
-
 boot();
 </script>
 </body>

@@ -378,6 +378,68 @@ def test_save_config_chief_mode_persists_planner_seat(tmp_path):
     assert data["mode"] == "chief"
 
 
+def test_read_config_reports_the_saved_mode_and_whether_a_config_exists(tmp_path):
+    """The page seeds its Mode from read_config. Without `mode` it fell back to Standard and the next
+    Launch wrote that back -- opening Studio on a Thorough project silently reset it. `configured`
+    tells a saved team (seat order) from the default roster (which the page must match by role)."""
+    fresh = studio.read_config(tmp_path)
+    assert fresh["mode"] == "standard" and fresh["configured"] is False
+    studio.save_config(tmp_path, count=3, layout="main-vertical", mode="thorough")
+    saved = studio.read_config(tmp_path)
+    assert saved["mode"] == "thorough" and saved["configured"] is True
+
+
+def test_status_reports_whose_cockpit_is_running(monkeypatch, tmp_path):
+    """/api/status drives the page's running light and the Launch button's wording. `here` uses the
+    same resolved-path comparison as launch()'s conflict guard."""
+    other = tmp_path / "other"; other.mkdir()
+    monkeypatch.setattr(studio, "is_session_running", lambda: False)
+    assert studio.status(tmp_path) == {"running": False, "here": False, "project": None}
+    monkeypatch.setattr(studio, "is_session_running", lambda: True)
+    monkeypatch.setattr(studio, "_running_project", lambda: str(other))
+    assert studio.status(tmp_path) == {"running": True, "here": False, "project": str(other)}
+    monkeypatch.setattr(studio, "_running_project", lambda: str(tmp_path / "other" / ".." / "."))
+    assert studio.status(tmp_path)["here"] is True                 # same folder, spelled differently
+    monkeypatch.setattr(studio, "_running_project", lambda: None)  # a session without the marker file
+    assert studio.status(tmp_path) == {"running": True, "here": False, "project": None}
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    httpd = studio.make_server(project_dir=tmp_path)
+    t = threading.Thread(target=httpd.serve_forever, daemon=True); t.start()
+    try:
+        s, body = _get(httpd, "/api/status")
+        assert s == 200 and _json.loads(body) == {"running": True, "here": False, "project": None}
+    finally:
+        httpd.shutdown()
+
+
+def _page() -> str:
+    return (Path(studio.__file__).parent / "studio_ui.html").read_text(encoding="utf-8")
+
+
+def test_page_seats_the_crew_the_way_the_server_will():
+    """The page labels each seat before the server builds the team, so its copy of the role order and
+    of the planner-seating modes must equal build_team's -- or a row is labelled one role and saved as
+    another."""
+    import re
+    from mkcrew import teamconfig
+    page = _page()
+    order = re.search(r"const ROLE_PRIORITY = \[(.*?)\];", page).group(1)
+    assert re.findall(r"'([\w-]+)'", order) == teamconfig._ROLE_PRIORITY
+    planner_modes = set(re.findall(r"'([\w-]+)'", re.search(r"const PLANNER_MODES = \[(.*?)\];", page).group(1)))
+    for m in studio.list_modes():
+        seated = teamconfig.build_team(3, mode=m["key"])[-1]["role"] == "planner"
+        assert seated == (m["key"] in planner_modes), m["key"]
+
+
+def test_page_makes_no_network_requests():
+    """Studio is a local tool that has to open offline: no web fonts, no CDN, no remote images. The only
+    absolute URL allowed in the page is the SVG namespace inside its inline icons."""
+    import re
+    urls = set(re.findall(r"https?://[^\s\"')<]+", _page()))
+    assert urls <= {"http://www.w3.org/2000/svg"}, urls
+
+
 
 def test_load_accounts_hides_bare_binary_accounts_from_picker(tmp_path, monkeypatch):
     """A bare-binary account (bin == the provider's own CLI, e.g. claude/"claude") is the SAME thing

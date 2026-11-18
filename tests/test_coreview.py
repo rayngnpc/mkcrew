@@ -72,7 +72,7 @@ def test_coreview_run_once_renders(tmp_path, monkeypatch, capsys):
     # one iteration, no real sleep, no real clear
     coreview.coreview_run(iterations=1, interval=0.0, clear=lambda: None)
     out = capsys.readouterr().out
-    assert "MKCREW core" in out
+    assert "MKCREW tower" in out
     assert "worker1" in out
 
 
@@ -112,8 +112,7 @@ def test_render_core_shows_full_roster_with_task_column():
     for cell in ("ROLE", "CLI", "STATE", "TASK", "main", "worker1", "running", "planner", "codex", "idle", "claude"):
         assert cell in out
     assert "write hello()" in out                         # the task line shows the current job
-    assert "──" in out                                    # column rule separates header from rows
-    assert "│" in out                                     # records wrapped in the table frame
+    assert "│" not in out and "┌" not in out              # frameless: the pane border is the frame
     assert "(none)" not in out
 
 
@@ -127,14 +126,13 @@ def test_render_core_jobs_use_professional_columns():
 
 
 def test_render_core_shows_hotkey_cheatsheet():
-    """The core frame appends a GROUPED HOTKEYS cheatsheet BELOW TASKS, inside the box frame: a
+    """The tower appends a GROUPED HOTKEYS cheatsheet BELOW TASKS: a
     'Cockpit (Ctrl-b …)' group of the REAL prefix binds (a/A add + x/X close + Esc unstick rebound in
     layouts.apply_chrome, plus curated psmux defaults like d detach / z zoom) and a 'Files pane' group of
     the bare filesview.BINDINGS keys. Renders even on an empty cockpit (static chrome)."""
     out = coreview.render_core({}, [])
     assert "HOTKEYS" in out
     body = out[out.index("HOTKEYS"):]
-    assert "KEY" in body and "ACTION" in body                # the KEY -> ACTION table header
     # Cockpit prefix group: rebound binds + curated psmux defaults, under a Ctrl-b group label.
     assert "Cockpit" in body and "Ctrl-b" in body
     assert "a / A" in body and "Add workspace" in body       # apply_chrome add-workspace popup (a/A)
@@ -146,7 +144,6 @@ def test_render_core_shows_hotkey_cheatsheet():
     assert "Ctrl-s" in body and "Save" in body               # files-IDE save bind
     assert "Ctrl-t" in body and "Tree" in body               # files-IDE refocus-tree bind
     assert out.index("TASKS") < out.index("HOTKEYS")         # sits below the TASKS section
-    assert "│" in out                                        # still wrapped in the box frame
 
 
 def test_render_core_compact_fits_files_column():
@@ -161,7 +158,7 @@ def test_render_core_compact_fits_files_column():
 
     out = coreview.render_core(agents, jobs, roster=roster, compact=True)
 
-    assert "MKCREW core" in out
+    assert "MKCREW tower" in out
     assert "TEAM" in out and "TASKS" in out and "HOTKEYS" in out
     assert "^←/^→ scroll" in out
     assert max(coreview._vlen(line) for line in out.splitlines()) <= 34
@@ -177,17 +174,57 @@ def test_render_core_compact_width_param_bounds_outer_frame():
         assert widths == {inner + 4}, f"width={inner}: {sorted(widths)}"
 
 
-def test_render_core_box_rows_are_rectangular():
-    """REGRESSION (ragged right border / merged headers): every boxed row renders to the SAME visible
-    width, so the closing │ is flush for coloured rows, rule rows AND headers alike — vertical AND
-    horizontal. (A coloured cell used to under-pad and the right border hugged the text.)"""
+def test_render_core_fits_the_pane():
+    """The tower never exceeds the pane it is given: no line wider than `cols`, no more lines than
+    `rows` -- in both orientations, from a roomy pane down to a one-row sliver. (The old frame had a
+    fixed height, so a short core pane showed the hotkeys at the bottom and scrolled the crew away.)"""
+    roster = [{"role": r, "provider": "claude"} for r in ("main", "worker1", "worker2", "planner")]
+    agents = {"worker1": {"state": "running", "job": "j5", "task": "do a long and winding thing " * 4}}
+    jobs = [JobView(id=f"j{i}", frm="main", to="worker1", status="DONE", text="some task " * 9,
+                    created_ts=1000.0 + i) for i in range(6)]
+    for cols in (24, 40, 58, 80, 110, 160, 220):
+        for rows in (1, 3, 5, 7, 9, 12, 20, 40):
+            for orient in ("v", "h"):
+                out = coreview.render_core(agents, jobs, roster=roster, orient=orient,
+                                           cols=cols, rows=rows, now=2000.0)
+                lines = out.splitlines()
+                assert len(lines) <= rows, f"{cols}x{rows} {orient}: {len(lines)} lines"
+                assert max(coreview._vlen(ln) for ln in lines) <= cols, f"{cols}x{rows} {orient} too wide"
+    # the crew outranks everything else: all four seats are still listed in a pane just tall enough
+    tight = _strip_ansi(coreview.render_core(agents, jobs, roster=roster, orient="h", cols=90, rows=6, now=2000.0))
+    assert all(role in tight for role in ("main", "worker1", "worker2", "planner"))
+
+
+def test_render_core_strip_stacks_when_narrow_and_goes_side_by_side_when_wide():
+    """orient='h' is a hint, not an order: a strip too narrow for two tables stacks them (when the
+    rows allow), so the task text gets the full width; a wide strip puts them side by side."""
     roster = [{"role": "main", "provider": "claude"}, {"role": "worker1", "provider": "codex"}]
-    agents = {"worker1": {"state": "running", "job": "j1", "task": "do a thing"}}
-    jobs = [JobView(id="j1", frm="main", to="worker1", status="DELIVERED")]
-    for orient in ("v", "h"):
-        out = coreview.render_core(agents, jobs, roster=roster, orient=orient)
-        widths = {coreview._vlen(ln) for ln in out.splitlines() if ln}
-        assert len(widths) == 1, f"orient={orient} ragged frame: {sorted(widths)}"
+    jobs = [JobView(id="j1", frm="main", to="worker1", status="DELIVERED", text="x")]
+    same_line = lambda out: any("TEAM" in ln and "TASKS" in ln for ln in out.splitlines())
+    assert same_line(coreview.render_core({}, jobs, roster=roster, orient="h", cols=200, rows=9))
+    assert not same_line(coreview.render_core({}, jobs, roster=roster, orient="h", cols=100, rows=14))
+    assert same_line(coreview.render_core({}, jobs, roster=roster, orient="h", cols=100, rows=5))   # too short to stack
+
+
+def test_state_lights_and_words():
+    """State is a WORD first; the gutter light repeats it as a shape (never colour alone): queued ○,
+    in flight ►, settled ●, needs a look ▲."""
+    jobs = [JobView(id="a", frm="main", to="w", status="PENDING"), JobView(id="b", frm="main", to="w", status="DELIVERED"),
+            JobView(id="c", frm="main", to="w", status="DONE"), JobView(id="d", frm="main", to="w", status="INCOMPLETE")]
+    rows = {ln.split()[1]: ln.split()[0] for ln in _strip_ansi(coreview.render_core({}, jobs, keys=False)).splitlines()
+            if len(ln.split()) > 1 and ln.split()[1] in "abcd"}
+    assert rows == {"a": "○", "b": "►", "c": "●", "d": "▲"}
+    assert coreview._state_kind("late-work 49m") == "late" and coreview._state_kind("waiting→worker2") == "waiting"
+
+
+def test_live_repaint_is_one_write_without_a_clear(capsys):
+    """The live pane repaints in place (cursor home + erase-to-EOL per line + erase-below) in a single
+    write, so it never flashes blank the way clear-then-print did."""
+    coreview._paint("one\ntwo")
+    out = capsys.readouterr().out
+    assert out.startswith("\033[H") and "\033[2J" not in out
+    assert out.count("\033[K") == 2 and "\033[J" in out
+    assert "one" in out and "two" in out and not out.endswith("\n")    # no trailing newline -> no scroll
 
 
 def test_padding_carries_bold_so_a_pane_keeps_it():
@@ -301,7 +338,7 @@ def test_waiting_wins_over_late_work_state():
 
 def test_activity_state_caps_at_16_chars():
     """STATE text for 'working <age>'/'late-work <age>' never exceeds the 16-char STATE column
-    budget, even for an extreme (many-hour) age, and the rendered frame stays rectangular."""
+    budget, even for an extreme (many-hour) age, and the rendered frame stays inside its width."""
     now = 1_000_000.0
     huge_age = 999 * 3600 + 59 * 60                        # deliberately absurd: ~999h59
     jobs = [JobView(id="job-1", frm="main", to="worker1", status="DELIVERED",
@@ -315,9 +352,8 @@ def test_activity_state_caps_at_16_chars():
     assert late is not None and len(late) <= 16
 
     agents = {"worker1": {"state": "running"}}
-    out = coreview.render_core(agents, jobs, activity={"worker1": 1.0}, now=now)
-    widths = {coreview._vlen(ln) for ln in out.splitlines() if ln}
-    assert len(widths) == 1                                # every row still the same visible width
+    out = coreview.render_core(agents, jobs, activity={"worker1": 1.0}, now=now, cols=80)
+    assert max(coreview._vlen(ln) for ln in out.splitlines()) <= 80   # an absurd age cannot widen the frame
 
 
 def test_render_core_backward_compat_no_activity_matches_today():
@@ -394,7 +430,7 @@ def test_coreview_run_without_daemon_matches_today(tmp_path, monkeypatch, capsys
 
     coreview.coreview_run(iterations=1, interval=0.0, clear=lambda: None)
     out = capsys.readouterr().out
-    assert "MKCREW core" in out
+    assert "MKCREW tower" in out
     assert "worker1" in out
     assert "working" not in out
 
@@ -420,3 +456,4 @@ def test_status_main_shows_roster_on_fresh_cockpit(tmp_path, monkeypatch, capsys
     out = _strip_ansi(capsys.readouterr().out)
     assert "worker1" in out and "worker2" in out       # idle crew VISIBLE with zero events
     assert "mode architect" in out                     # posture badge rides along
+    assert "HOTKEYS" not in out                        # a snapshot agents read: no key cheatsheet

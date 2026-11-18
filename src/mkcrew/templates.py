@@ -39,15 +39,15 @@ class Template:
 # Order = display order in the pickers.
 TEMPLATES = [
     Template("main-vertical", "LEAD LEFT", NORMAL, False,
-             "Lead top-left, workers stacked on the right, core status bottom-left."),
+             "Lead top-left, workers stacked on the right, tower bottom-left."),
     Template("even-horizontal", "Side by Side", NORMAL, False,
-             "Agents in side-by-side columns with a core status strip."),
+             "Agents in side-by-side columns over a tower strip."),
     Template("lead-left-ide", "LEAD LEFT + Files IDE", EXPERIMENTAL, True,
-             "LEAD LEFT plus the files IDE pane (core | explorer | editor). Experimental."),
+             "LEAD LEFT plus the files IDE pane (tower | explorer | editor). Experimental."),
     # pages scales: the builder grids up to 6 agents per window (_PER_PAGE) + a core strip per tab,
     # so it's the template that actually FITS a 5-6 agent team; <=6 agents stays a single page.
     Template("pages", "Pages", NORMAL, False,
-             "Agents across paged grid windows, each with a core strip.",
+             "Agents across paged grid windows, each with a tower strip.",
              max_agents=6),
 ]
 

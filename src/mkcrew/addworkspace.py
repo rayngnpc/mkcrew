@@ -45,28 +45,38 @@ _DEFAULT_TEMPLATE_KEY = _NORMAL_TEMPLATES[0].key          # main-vertical (LEAD 
 # what each layout looks like (paired with the template's registry description).  Every offered key —
 # main-vertical, even-horizontal AND the experimental lead-left-ide — has a sketch, so no option ever
 # renders a blank preview.
+# Each sketch is the real geometry the builder produces (layouts.py), tower included: the same picture
+# Studio's cockpit preview draws.
 _TEMPLATE_SKETCHES = {
-    "main-vertical": ("┌──────┬───┐\n"
-                      "│      │ ◧ │\n"
-                      "│ LEAD ├───┤\n"
-                      "│      │ ◧ │\n"
-                      "└──────┴───┘"),
-    "even-horizontal": ("┌────┬────┬────┐\n"
-                        "│    │    │    │\n"
-                        "│ ◧  │ ◧  │ ◧  │\n"
-                        "│    │    │    │\n"
-                        "└────┴────┴────┘"),
-    "pages": ("┌────┬────┐\n"
-              "│ ◧  │ ◧  │\n"
-              "├────┴────┤\n"
-              "│  CORE   │\n"
-              "└─────────┘ + tab per page"),
-    # experimental: LEAD LEFT plus the files-IDE pane (core | explorer | editor).
-    "lead-left-ide": ("┌─────┬─────┬─────┐\n"
-                      "│     │     │     │\n"
-                      "│CORE │EXPL │EDIT │\n"
-                      "│     │     │     │\n"
-                      "└─────┴─────┴─────┘"),
+    "main-vertical": ("┌─────────┬─────┐\n"
+                      "│         │  ◧  │\n"
+                      "│  LEAD   ├─────┤\n"
+                      "│         │  ◧  │\n"
+                      "├─────────┼─────┤\n"
+                      "│  TOWER  │  ◧  │\n"
+                      "└─────────┴─────┘"),
+    "even-horizontal": ("┌──────┬─────┬─────┐\n"
+                        "│      │     │     │\n"
+                        "│ LEAD │  ◧  │  ◧  │\n"
+                        "│      │     │     │\n"
+                        "├──────┴─────┴─────┤\n"
+                        "│      TOWER       │\n"
+                        "└──────────────────┘"),
+    "pages": ("┌──────┬─────┬─────┐\n"
+              "│ LEAD │  ◧  │  ◧  │\n"
+              "├──────┼─────┼─────┤\n"
+              "│  ◧   │  ◧  │  ◧  │\n"
+              "├──────┴─────┴─────┤\n"
+              "│      TOWER       │\n"
+              "└──────────────────┘ six to a page"),
+    # experimental: agents stacked on the left, the files-IDE pane (tower | explorer | editor) on the right.
+    "lead-left-ide": ("┌──────┬─────┬─────┬──────┐\n"
+                      "│ LEAD │     │     │      │\n"
+                      "├──────┤TOWER│EXPL │ EDIT │\n"
+                      "│  ◧   │     │     │      │\n"
+                      "├──────┤     │     │      │\n"
+                      "│  ◧   │     │     │      │\n"
+                      "└──────┴─────┴─────┴──────┘"),
 }
 
 
@@ -235,25 +245,25 @@ class AddWorkspaceApp(App):
     the pure `_build_add_command` argv — the whole keyboard path is provable headlessly (see tests)."""
 
     CSS = """
-    Screen { background: #07111f; align: center middle; }
+    Screen { background: #0e1116; align: center middle; }
     #card { width: 78; height: 95%; padding: 1 3;
-            background: #0d1f33; border: round #35e0ff; }
-    #title { color: #35e0ff; text-style: bold; padding-bottom: 1; }
-    #hint { color: #587a9a; padding-top: 1; }
+            background: #161b23; border: round #333c49; }
+    #title { color: #e7eaef; text-style: bold; padding-bottom: 1; }
+    #hint { color: #7c8694; padding-top: 1; }
     /* Bug A: the steps are a scrollable content area; the nav bar docks below and is ALWAYS visible. */
     #steps { height: 1fr; overflow-y: auto; }
     ContentSwitcher > Vertical { height: auto; }
     /* FIX 1: the Browse pane FILLS #steps (definite height) so its docked #br_nav (Use this folder /
        Cancel) is pinned to the visible card bottom instead of overflowing off-screen + unclickable. */
     #browse { height: 100%; }
-    Label { color: #8fc0e8; text-style: bold; }
-    Input { border: tall #1b3a52; background: #0a1828; }
-    Input:focus { border: tall #35e0ff; }
+    Label { color: #9aa4b2; text-style: bold; }
+    Input { border: tall #333c49; background: #0e1116; }
+    Input:focus { border: tall #4aa3ff; }
     #folder_row { height: auto; }                 /* Bug C: folder Input + Browse side by side */
     #folder_row Input { width: 1fr; }
     #browse_btn { width: auto; }
-    #dirtree { height: 1fr; border: tall #1b3a52; background: #0a1828; }   /* Bug C/FIX 1: tree flexes so the docked nav fits */
-    #dirtree:focus { border: tall #35e0ff; }
+    #dirtree { height: 1fr; border: tall #333c49; background: #0e1116; }   /* Bug C/FIX 1: tree flexes so the docked nav fits */
+    #dirtree:focus { border: tall #4aa3ff; }
     #br_path_row { height: auto; }                /* item #3: type-a-path + Go + Up (Explorer nav) */
     #br_path_row Input { width: 1fr; }
     #br_drives { height: auto; layout: horizontal; }   /* item #3: one button per drive/disk */
@@ -261,11 +271,11 @@ class AddWorkspaceApp(App):
     /* FIX 1: dock the picker's confirm bar to the bottom of #browse (like #nav) so Use this folder /
        Cancel are ALWAYS on-screen + clickable, however tall the tree gets.  #dirtree is 1fr, so
        #br_current (the "what Confirm picks" line) sits in flow right above this docked bar. */
-    #br_nav { dock: bottom; height: auto; padding-top: 1; background: #0d1f33; }
-    #br_current { color: #35e0ff; text-style: bold; padding-top: 1; }   /* FIX 1: what "Use this folder" picks */
+    #br_nav { dock: bottom; height: auto; padding-top: 1; background: #161b23; }
+    #br_current { color: #e7eaef; text-style: bold; padding-top: 1; }   /* FIX 1: what "Use this folder" picks */
     RadioSet { width: 100%; height: auto;
-               background: #0a1828; border: tall #1b3a52; border-title-color: #587a9a; }
-    RadioSet:focus { border: tall #35e0ff; }
+               background: #0e1116; border: tall #333c49; border-title-color: #7c8694; }
+    RadioSet:focus { border: tall #4aa3ff; }
     /* item #1: short radiosets stay on one row, but each option is CONTENT-sized with a uniform gap.
        The RadioSet default stretches every option to 1fr, which gave SHORT labels big trailing gaps
        while LONG neighbours collided/clipped — so size to content + a fixed gutter instead. */
@@ -276,23 +286,32 @@ class AddWorkspaceApp(App):
        never collides or clips a model name (a horizontal row can't wrap in Textual). */
     .cli, .model, .effort { layout: vertical; }
     .modelsel { width: 100%; }                  /* OpenCode model picker is a Select (dropdown) */
-    Select:focus > SelectCurrent { border: tall #35e0ff; }
-    .agent { height: auto; border: round #14324a; padding: 0 1; margin-bottom: 1; }
-    .agentlabel { color: #35e0ff; }
+    Select:focus > SelectCurrent { border: tall #4aa3ff; }
+    .agent { height: auto; border: round #333c49; padding: 0 1; margin-bottom: 1; }
+    .agentlabel { color: #e7eaef; }
     .hidden { display: none; }
     #agents { height: auto; max-height: 30; overflow-y: auto; }   /* fallback only; 1-2 agents never scroll */
-    RadioButton { color: #7fb0d8; }
-    RadioButton.-selected { color: #35e0ff; text-style: bold; }
-    #summary { color: #cfe8ff; padding: 1 0; }
-    #template_preview { color: #7fb0d8; padding-top: 1; }   /* item #6: inline layout sketch + description */
+    RadioButton { color: #9aa4b2; }
+    RadioButton.-selected { color: #4aa3ff; text-style: bold; }
+    RadioButton.-on > .toggle--button { color: #4aa3ff; }      /* the pick is azure, as on Studio's radios */
+    #summary { color: #e7eaef; padding: 1 0; }
+    #template_preview { color: #9aa4b2; padding-top: 1; }   /* item #6: inline layout sketch + description */
     Button { margin-right: 2; text-style: bold;
-             background: #14324a; color: #35e0ff; border: tall #1b3a52; }
-    Button:focus { border: tall #35e0ff; background: #1a3e5a; }
-    #nav { dock: bottom; height: auto; width: 100%; padding-top: 1; background: #0d1f33; }
+             background: #1e2631; color: #e7eaef; border: tall #333c49; }
+    Button:focus { border: tall #4aa3ff; background: #273242; }
+    /* the step's main action is the one lit control (same rule as Studio's Launch button) */
+    #next, Button.-primary { background: #4aa3ff; color: #04121f; border: tall #4aa3ff; }
+    #next:focus, Button.-primary:focus { background: #4aa3ff; border: tall #e7eaef; }
+    #next:disabled, Button.-primary:disabled { background: #1e2631; color: #7c8694; border: tall #333c49; }
+    #nav { dock: bottom; height: auto; width: 100%; padding-top: 1; background: #161b23; }
     #ow_nav, #ws_nav { height: auto; padding-top: 1; }
-    #ow_msg { color: #cfe8ff; padding: 1 0; }
+    #ow_msg { color: #e7eaef; padding: 1 0; }
     #ws_box { height: auto; max-height: 20; overflow-y: auto; }
-    Footer { background: #0d2137; color: #7fb0d8; }
+    /* footer keys read like the cockpit bar's hints: the key in bold ink, its meaning in grey */
+    Footer { background: #161b23; color: #9aa4b2; }
+    FooterKey { background: #161b23; }
+    FooterKey .footer-key--key { color: #e7eaef; background: #161b23; }
+    FooterKey .footer-key--description { color: #9aa4b2; background: #161b23; }
     """
     BINDINGS = [
         ("escape", "cancel", "Cancel"),

@@ -103,7 +103,7 @@ def test_name_validation_rejects_bad_file_and_folder_names():
 def test_app_mounts_three_columns(tmp_path):
     """Headless mount of the 3-column IDE: CSS parses, compose runs, and the LEFT core panel,
     CENTER tree, and RIGHT viewer+editor widgets all exist. The core panel renders the SAME frame
-    coreview.render_core produces (it always emits 'MKCREW core'), proving it's wired to the real
+    coreview.render_core produces (it always emits 'MKCREW tower'), proving it's wired to the real
     view and not a stub."""
     (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
 
@@ -116,7 +116,7 @@ def test_app_mounts_three_columns(tmp_path):
             assert app.query_one("#view", ScrollableContainer) is not None   # RIGHT — viewer
             assert app.query_one("#edit", TextArea) is not None      # RIGHT — editor
             core_text = str(app.query_one("#core", Static).render()).lower()
-            assert "core" in core_text                               # render_core frame painted
+            assert "tower" in core_text                              # render_core frame painted
     asyncio.run(go())
 
 

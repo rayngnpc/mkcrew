@@ -178,13 +178,17 @@ def _workspace_label(project_dir) -> str:
 
 def read_config(project_dir) -> dict:
     """Current config for the project WITHOUT writing anything. Defaults if absent. `name` surfaces
-    the workspace identity (persisted name, else the folder name) for the UI's cockpit label."""
+    the workspace identity (persisted name, else the folder name) for the UI's cockpit label.
+    `mode` is the SAVED mode: without it the page fell back to Standard and the next launch wrote
+    that back, silently resetting e.g. a Thorough project. `configured` says whether a team.config
+    exists (a saved team is in seat order; the default roster is not)."""
     cfg = teamconfig._config_path(project_dir)
     name = _workspace_label(project_dir)
     if cfg.exists():
-        return {"agents": teamconfig.load_team(project_dir),
-                "layout": teamconfig.load_layout(project_dir), "name": name}
-    return {"agents": teamconfig.default_team(), "layout": "main-vertical", "name": name}
+        return {"agents": teamconfig.load_team(project_dir), "layout": teamconfig.load_layout(project_dir),
+                "mode": teamconfig.load_mode(project_dir), "name": name, "configured": True}
+    return {"agents": teamconfig.default_team(), "layout": "main-vertical", "mode": "standard",
+            "name": name, "configured": False}
 
 
 def save_config(project_dir, count: int, layout: str, providers=None, mode: str = "standard",
@@ -265,6 +269,16 @@ def _running_project():
         return config.cockpit_project_file().read_text(encoding="utf-8").strip() or None
     except (OSError, FileNotFoundError):
         return None
+
+
+def status(project_dir) -> dict:
+    """Whether a cockpit is live, and whose. `here` uses the same path comparison as launch()'s
+    conflict guard, so the page and the guard cannot disagree about "this project"."""
+    if not is_session_running():
+        return {"running": False, "here": False, "project": None}
+    other = _running_project()
+    here = bool(other) and Path(other).resolve() == Path(project_dir).resolve()
+    return {"running": True, "here": here, "project": other}
 
 
 def launch(project_dir, force=False) -> dict:
@@ -466,6 +480,8 @@ def _make_handler(project_dir):
                 self._json(200, {"profiles": profiles.list_profiles()})
             elif path == "/api/project":
                 self._json(200, {"path": get_project()})
+            elif path == "/api/status":
+                self._json(200, status(get_project()))
             elif path == "/api/dirs":
                 from urllib.parse import parse_qs
                 qs = parse_qs(urlparse(self.path).query)

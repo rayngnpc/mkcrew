@@ -93,9 +93,9 @@ def _preview_text(text: str) -> Text:
     for i, line in enumerate(lines, start=1):
         if i > 1:
             out.append("\n")
-        out.append(f"{i:<{digits}}", style="#35e0ff bold")
-        out.append(" │ ", style="#1b3a52")
-        out.append(line, style="#e6f0ff")
+        out.append(f"{i:<{digits}}", style="#7c8694")
+        out.append(" │ ", style="#333c49")
+        out.append(line, style="#d9dde4")
     return out
 
 
@@ -126,8 +126,8 @@ class _SaveConfirm(ModalScreen[bool]):
     """Nano-style save confirmation: one focused modal, Y/N/Esc, no editor focus ambiguity."""
     CSS = """
     _SaveConfirm { align: center middle; }
-    #savebox { width: 58; height: 7; background: #0d2137; border: solid #35e0ff; padding: 1 2; }
-    #saveprompt { height: 2; color: #e6f0ff; }
+    #savebox { width: 58; height: 7; background: #161b23; border: solid #333c49; padding: 1 2; }
+    #saveprompt { height: 2; color: #e7eaef; }
     #savebuttons { height: 1; }
     #savebuttons Button { width: 1fr; height: 1; border: none; margin: 0 1; }
     """
@@ -201,44 +201,44 @@ class _ProjectTree(DirectoryTree):
 
 class FilesApp(App[None]):
     CSS = """
-    Screen { background: #0a1628; }
-    #title { height: 1; background: #0d2137; color: #35e0ff; text-style: bold; padding: 0 1; }
+    Screen { background: #0e1116; }
+    #title { height: 1; background: #161b23; color: #e7eaef; text-style: bold; padding: 0 1; }
     #columns { height: 1fr; }
     /* width MUST hold the compact core box (outer = _CORE_INNER + 4 = 34): content =
        38 - 2 padding - 1 border-right = 35 >= 34, so the box never wraps into the tree (bug: the
        core box was wider than this column and wrapped, interleaving with the file tree). */
-    #core { width: 38; height: 100%; background: #0a1628; color: #9ec7e8; padding: 0 1;
-            border-right: solid #1b3a52; }
+    #core { width: 38; height: 100%; background: #0e1116; color: #d9dde4; padding: 0 1;
+            border-right: solid #333c49; }
     /* CENTER column = a compact create toolbar + the current-location line + the file tree. */
-    #treecol { width: 36; height: 100%; background: #0a1628; border-right: solid #1b3a52; }
+    #treecol { width: 36; height: 100%; background: #0e1116; border-right: solid #333c49; }
     /* Toolbar is 3 rows tall so ＋📄/＋📁 are FAT mouse targets: a click that psmux misreports
        by a row still lands ON a button instead of slipping onto the title/cwd line (see
        _should_compensate). Buttons fill the full width+height of the toolbar. */
-    #treebar { height: 3; background: #0d2137; }
+    #treebar { height: 3; background: #161b23; }
     #treebar Button { width: 1fr; min-width: 0; height: 3; border: none; padding: 0; margin: 0;
-                      content-align: center middle; background: #14324d; color: #35e0ff;
+                      content-align: center middle; background: #1e2631; color: #e7eaef;
                       text-style: bold; }
-    #treebar Button:focus { background: #1b4a6e; }
-    #treebar Button:hover { background: #1f5780; }
+    #treebar Button:focus { background: #273242; }
+    #treebar Button:hover { background: #2f3c4f; }
     /* The explorer's in-column collapse handle (］/ mouse path). Narrow so the ＋ buttons keep room;
        two ids beat the `#treebar Button` rule's width:1fr. Vanishes with the column — reopen from the
        always-visible control strip in #right. */
-    #treebar #tree_close { width: 4; color: #7fb0d8; }
-    #treebar #tree_close:hover { background: #1f5780; color: #35e0ff; }
-    #cwd { height: 1; background: #0a1628; color: #ffb14e; padding: 0 1; }
+    #treebar #tree_close { width: 4; color: #9aa4b2; }
+    #treebar #tree_close:hover { background: #2f3c4f; color: #e7eaef; }
+    #cwd { height: 1; background: #0e1116; color: #9aa4b2; padding: 0 1; }
     /* Inline create field: a REAL focused Input (replaces the old draft-tree-node hack that lost
        keyboard focus in the live pane — placeholder showed but nothing could be typed). Hidden until
        ＋File/＋Folder (button or n/f) opens it; .focus()'d on show so the name is immediately typable
        and printable keys can never leak into the tree/editor or fire an app shortcut. */
-    #newname { display: none; height: 3; margin: 0 1; padding: 0 1; background: #0d2137;
-               color: #e6f0ff; border: round #35e0ff; }
-    #newname:focus { border: round #ffb14e; }
-    #tree { width: 100%; height: 1fr; background: #0a1628; color: #9ec7e8; padding: 0 1;
+    #newname { display: none; height: 3; margin: 0 1; padding: 0 1; background: #161b23;
+               color: #e7eaef; border: round #333c49; }
+    #newname:focus { border: round #4aa3ff; }
+    #tree { width: 100%; height: 1fr; background: #0e1116; color: #c5cbd4; padding: 0 1;
             scrollbar-size: 1 1; }
-    #tree .directory-tree--folder { color: #35e0ff; text-style: bold; }
-        #tree .directory-tree--extension { color: #7fb0d8; }
-        #tree .tree--cursor { background: #ffb14e; color: #0a1628; text-style: bold; }
-        #newerror { height: 1; display: none; background: #300f18; color: #ff6b8a; padding: 0 1; }
+    #tree .directory-tree--folder { color: #e7eaef; text-style: bold; }
+        #tree .directory-tree--extension { color: #7c8694; }
+        #tree .tree--cursor { background: #273242; color: #e7eaef; text-style: bold; }
+        #newerror { height: 1; display: none; background: #2a1517; color: #f0716c; padding: 0 1; }
         /* #right is the editor/viewer column. width:1fr means it FLEXES to fill whatever horizontal
            space the (collapsible) #core / #treecol columns free — hide both (z) and it goes
            full-width. */
@@ -246,27 +246,30 @@ class FilesApp(App[None]):
     /* Panel collapse/maximize control strip — a thin, ALWAYS-VISIBLE toolbar at the top of the editor
        column, so a mouse user can reopen a column the keyboard (z/[/]) collapsed. Buttons mirror the
        keys: max=z, core=[, files=]. */
-    #rightbar { height: 1; background: #0d2137; }
+    #rightbar { height: 1; background: #161b23; }
     #rightbar Button { width: auto; min-width: 4; height: 1; border: none; padding: 0 1;
-                       margin: 0 1 0 0; background: #14324d; color: #35e0ff; text-style: bold; }
-    #rightbar Button:hover { background: #1f5780; }
-    #rightbar Button:focus { background: #1b4a6e; }
-    #pathbar { height: 1; background: #0d2137; color: #ffb14e; padding: 0 1; }
+                       margin: 0 1 0 0; background: #1e2631; color: #e7eaef; text-style: bold; }
+    #rightbar Button:hover { background: #2f3c4f; }
+    #rightbar Button:focus { background: #273242; }
+    #pathbar { height: 1; background: #161b23; color: #9aa4b2; padding: 0 1; }
     /* Read-only viewer: scroll BOTH axes. #content sizes to its widest line (width:auto) so long,
        unwrapped lines overflow horizontally and the container scrolls left/right (Syntax is rendered
        with word_wrap=False); tall files scroll vertically. Scrollbars always reserved so they show. */
-    #view { height: 1fr; background: #0a1628; padding: 0 1;
+    #view { height: 1fr; background: #0e1116; padding: 0 1;
             overflow-x: scroll; overflow-y: scroll; scrollbar-size: 1 1;
-            scrollbar-color: #35e0ff; scrollbar-background: #0d2137; }
+            scrollbar-color: #4a5565; scrollbar-background: #161b23; }
     #content { width: auto; height: auto; }
     /* Editor: soft_wrap is OFF (see compose) so long lines scroll horizontally; tall files scroll
        vertically (TextArea is a ScrollView, overflow auto on both axes). `padding: 0 1` MATCHES #view
        so the text's left/right framing is identical in view vs edit mode (short lines no longer sit at
        a different right inset when toggling). overflow-x: scroll reserves the H-scroll track so it is
        always visible (the keyboard ^←/^→ scroll the same surface). */
-    #edit { height: 1fr; background: #0a1628; padding: 0 1; overflow-x: scroll; scrollbar-size: 1 1;
-            scrollbar-color: #35e0ff; scrollbar-background: #0d2137; }
-    Footer { background: #0d2137; color: #7fb0d8; }
+    #edit { height: 1fr; background: #0e1116; padding: 0 1; overflow-x: scroll; scrollbar-size: 1 1;
+            scrollbar-color: #4a5565; scrollbar-background: #161b23; }
+    Footer { background: #161b23; color: #9aa4b2; }
+    FooterKey { background: #161b23; }
+    FooterKey .footer-key--key { color: #e7eaef; background: #161b23; }
+    FooterKey .footer-key--description { color: #9aa4b2; background: #161b23; }
     """
     BINDINGS = [
         ("e", "edit", "Edit"),
@@ -284,7 +287,7 @@ class FilesApp(App[None]):
         # explorer. Inert while typing (see _is_typing) so the keys type into the editor / new-file
         # field. key_display shows the bracket glyph in the Footer (the raw key name is verbose).
         ("z", "toggle_maximize", "Max editor"),
-        Binding("left_square_bracket", "toggle_core", "Core", key_display="["),
+        Binding("left_square_bracket", "toggle_core", "Tower", key_display="["),
         Binding("right_square_bracket", "toggle_tree", "Explorer", key_display="]"),
         Binding("ctrl+left", "scroll_left", "Left", priority=True),
         Binding("ctrl+right", "scroll_right", "Right", priority=True),
@@ -370,7 +373,7 @@ class FilesApp(App[None]):
             with Vertical(id="right"):                           # RIGHT: viewer / editor column
                 with Horizontal(id="rightbar"):                  # collapse/maximize controls (mouse path)
                     yield Button("max", id="max_toggle")         # z — maximize editor / restore all three
-                    yield Button("core", id="core_toggle")       # [ — collapse/restore the core column
+                    yield Button("tower", id="core_toggle")       # [ — collapse/restore the core column
                     yield Button("files", id="tree_toggle")      # ] — collapse/restore the explorer column
                 yield Static("  ↑↓ + enter open · e edit · n new · f folder · z max editor · ^t tree", id="pathbar")
                 with ScrollableContainer(id="view"):
@@ -422,7 +425,7 @@ class FilesApp(App[None]):
             frame.no_wrap = True            # box-drawing lines stay one row each in the narrow column
             frame.overflow = "crop"         # … cropped, not wrapped into a broken grid
         except Exception as e:              # noqa: BLE001 — the pane must survive any read error
-            frame = Text(f"core unavailable: {e}", style="#7fb0d8")
+            frame = Text(f"tower unavailable: {e}", style="#9aa4b2")
         self.query_one("#core", Static).update(frame)
 
     # ── current-location line (#cwd, CENTER column) ───────────────────────────────────
