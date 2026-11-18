@@ -75,7 +75,7 @@ def test_wizard_mounts_and_builds_default_command(tmp_path):
             assert cmd[cmd.index("--providers") + 1] == "claude"
             assert cmd[cmd.index("--efforts") + 1] == "high"
             assert cmd[cmd.index("--template") + 1] == "main-vertical"
-            assert cmd[cmd.index("--models") + 1] == "claude-opus-4-8"   # concrete default model
+            assert cmd[cmd.index("--models") + 1] == "claude-opus-5-5"   # concrete default model
             assert "--name" not in cmd                   # empty name -> no flag (auto)
             app.query_one("#name", Input).value = "myws"
             assert app._build_cmd()[-2:] == ["--name", "myws"]
@@ -114,9 +114,10 @@ def test_wizard_keyboard_flow_builds_per_agent_command(tmp_path):
                 await pilot.press("down", "enter")
                 await pilot.pause()
                 model_labels = [str(b.label) for b in app.query_one("#model0", RadioSet).query(RadioButton)]
-                assert model_labels == ["GPT-5.5", "GPT-5.4", "GPT-5.4 mini"]   # Codex roster (item #4)
+                assert model_labels == ["GPT-6.1-Sol", "GPT-6-Astra", "GPT-6.1 Terra", "GPT-6-Sol", "GPT-6-Luna",
+                                        "GPT-5.6-Sol", "GPT-5.6-Terra", "GPT-5.6-Luna"]   # Codex roster
                 effort_labels = [str(b.label) for b in app.query_one("#effort0", RadioSet).query(RadioButton)]
-                assert "xhigh" in effort_labels                           # effort came from GPT-5.5's list
+                assert "xhigh" in effort_labels                           # effort came from GPT-6.1-Sol's list
 
                 # Step 1 -> 2 (ctrl+right is an app binding; the focused RadioSet ignores it).
                 await pilot.press("ctrl+right")
@@ -139,7 +140,7 @@ def test_wizard_keyboard_flow_builds_per_agent_command(tmp_path):
 
     expected = ["add", str(tmp_path), "--agents", "2",
                 "--providers", "codex,claude",                 # agent0 = codex, agent1 = claude default
-                "--models", "gpt-5.5,claude-opus-4-8",         # agent0 = GPT-5.5, agent1 = Claude Opus 4.8
+                "--models", "gpt-6.1-sol,claude-opus-5-5",     # agent0 = GPT-6.1-Sol, agent1 = Claude Opus 5.5
                 "--efforts", "high,high",                      # per-agent: codex 'high' + claude 'high'
                 "--template", "main-vertical"]                 # default template (Normal group, index 0)
     assert captured["pending"] == expected         # the argv the app built from the keyboard+click path
@@ -261,16 +262,16 @@ def test_wizard_antigravity_effort_offered_and_folds_into_model(tmp_path):
             assert app._agent_cli(0) == "antigravity"
             # the thinking picker is PRESENT (not hidden) for the default Gemini model — effort NOT removed
             assert not app.query_one("#effort0", RadioSet).has_class("hidden")
-            assert app._agent_model(0) == "Gemini 3.5 Flash"               # base name (no suffix yet)
+            assert app._agent_model(0) == "Gemini 4 Argon"               # base name (no suffix yet)
             assert app._agent_effort(0) == "high"                          # defaults to high
             cmd = app._build_cmd()
             assert cmd[cmd.index("--providers") + 1] == "antigravity"
-            assert cmd[cmd.index("--models") + 1] == "Gemini 3.5 Flash"     # base model passed through
+            assert cmd[cmd.index("--models") + 1] == "Gemini 4 Argon"     # base model passed through
             assert cmd[cmd.index("--efforts") + 1] == "high"               # effort PERSISTED, not dropped
             # end-to-end: the persisted base-model + effort fold into the real agy --model value
-            launched = agent._agent_command_line("antigravity", "Gemini 3.5 Flash",
+            launched = agent._agent_command_line("antigravity", "Gemini 4 Argon",
                                                  "bypassPermissions", "high", "w", str(tmp_path))
-            assert '--model "Gemini 3.5 Flash (High)"' in launched
+            assert '--model "Gemini 4 Argon (High)"' in launched
     asyncio.run(go())
 
 
@@ -446,7 +447,7 @@ def test_wizard_summary_step_is_aligned_key_value_report(tmp_path):
                 assert label in text                      # every key label is present
             assert "myws" in text                         # the typed workspace name (a value)
             assert app._folder_value() in text            # the chosen folder path (a value)
-            assert "Claude Opus 4.8" in text              # the default agent's model label (a value)
+            assert "Claude Opus 5.5" in text              # the default agent's model label (a value)
             assert "LEAD LEFT" in text or "main-vertical" in text   # the template (value: label or key)
             lines = [ln for ln in text.splitlines() if ln.strip()]
             assert len(lines) >= 5                         # multi-line report, not a single cramped row
@@ -572,11 +573,11 @@ def test_addworkspace_picker_removes_gemini_and_uses_template_labels():
     assert not any("variant" in label.lower() for _value, label, _efforts in _MODELS["opencode"])
     # Requirement 1: FULL model labels (not bare "Opus"/"Sonnet").
     claude_labels = [label for _v, label, _ef in _MODELS["claude"]]
-    assert {"Claude Opus 4.8", "Claude Sonnet 5", "Claude Haiku 4.5", "Claude Fable 5"} <= set(claude_labels)
+    assert {"Claude Opus 5.5", "Claude Sonnet 5.5", "Claude Haiku 5.5", "Claude Fable 5.2"} <= set(claude_labels)
     # Requirement 2: efforts are per-MODEL and differ (strong tier has 'max', fast tier does not).
     by_id = {v: ef for v, _l, ef in _MODELS["claude"]}
-    assert "max" in by_id["claude-opus-4-8"] and "max" not in by_id["claude-haiku-4-5"]
-    assert _MODELS["codex"][0][2][-1] == "xhigh"                       # GPT-5.5 tops out at 'xhigh'
+    assert "max" in by_id["claude-opus-5-5"] and "max" not in by_id["claude-haiku-5-5"]
+    assert _MODELS["codex"][0][2][-1] == "ultra"                       # GPT-6.1-Sol tops out at 'ultra'
 
 
 def test_template_picker_groups_registry_normal_and_experimental():
@@ -592,16 +593,19 @@ def test_template_picker_groups_registry_normal_and_experimental():
     assert "pages" in offered                                          # parity with Studio
 
 
-def test_codex_roster_adds_gpt54_and_mini_with_effort_lists():
-    """Item #4: Codex offers GPT-5.5, GPT-5.4, and GPT-5.4 mini.  5.5 + 5.4 expose 'xhigh'; the mini
-    variant caps at 'high' (low/medium/high only)."""
+def test_codex_roster_matches_codex_picker_with_effort_lists():
+    """Codex offers what codex's own picker lists (GPT-6.1-Sol first = the wizard default).  Efforts
+    are per-model: every model reaches 'max'; 'ultra' exists on sol/astra/terra but NOT on luna."""
     labels = [label for _v, label, _ef in _MODELS["codex"]]
-    assert labels == ["GPT-5.5", "GPT-5.4", "GPT-5.4 mini"]
+    assert labels == ["GPT-6.1-Sol", "GPT-6-Astra", "GPT-6.1 Terra", "GPT-6-Sol", "GPT-6-Luna",
+                      "GPT-5.6-Sol", "GPT-5.6-Terra", "GPT-5.6-Luna"]
     by_id = {v: ef for v, _l, ef in _MODELS["codex"]}
-    assert by_id["gpt-5.5"] == ["low", "medium", "high", "xhigh"]
-    assert by_id["gpt-5.4"] == ["low", "medium", "high", "xhigh"]
-    assert by_id["gpt-5.4-mini"] == ["low", "medium", "high"]          # mini: no 'xhigh'
-    assert "xhigh" not in by_id["gpt-5.4-mini"]
+    full = ["low", "medium", "high", "xhigh", "max", "ultra"]
+    for mid in ("gpt-6.1-sol", "gpt-6-astra", "gpt-6.1-terra", "gpt-6-sol", "gpt-5.6-sol", "gpt-5.6-terra"):
+        assert by_id[mid] == full
+    for mid in ("gpt-6-luna", "gpt-5.6-luna"):
+        assert by_id[mid] == full[:-1]                             # luna: no 'ultra'
+    assert all("minimal" not in ef for ef in by_id.values())       # no current codex model lists it
 
 
 def test_native_menu_command_uses_prompt_and_run_shell():

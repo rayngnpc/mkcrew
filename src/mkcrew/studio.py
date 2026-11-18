@@ -20,22 +20,29 @@ _PROVIDER_BINARY = {"antigravity": "agy"}   # provider name -> the actual CLI bi
 # load_catalog). opencode covers both 'zen' (opencode/<id>, curated gateway) and 'go' (opencode-go/<id>,
 # subscription) per opencode.ai/docs/{zen,go}. antigravity model names carry the level (no thinking toggle).
 _PROVIDER_MODELS = {
-    "claude":      ["claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5", "claude-fable-5"],
-    "codex":       ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"],
+    "claude":      ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-2"],
+    "codex":       ["gpt-6.1-sol", "gpt-6-astra", "gpt-6.1-terra", "gpt-6-sol", "gpt-6-luna",   # codex's own picker list
+                    "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],                           # ($CODEX_HOME/models_cache.json)
     "opencode":    ["opencode/big-pickle", "opencode/deepseek-v4-flash-free", "opencode/mimo-v2.5-free",
                     "opencode/north-mini-code-free",                       # zen free tier (docs/zen)
                     "opencode-go/minimax-m3", "opencode-go/deepseek-v4-flash", "opencode-go/glm-5.2",
                     "opencode-go/kimi-k2.7-code", "opencode-go/qwen3.7-max"],   # opencode go (docs/go)
-    "antigravity": ["Gemini 3.5 Flash (High)", "Gemini 3.5 Flash (Medium)", "Gemini 3.5 Flash (Low)",
-                    "Gemini 3.1 Pro (High)", "Gemini 3.1 Pro (Low)", "Claude Sonnet 4.6 (Thinking)",
-                    "Claude Opus 4.6 (Thinking)", "GPT-OSS 120B (Medium)"],   # agy's OWN catalog (not the claude provider)
+    "antigravity": ["Gemini 4 Argon (Medium)", "Gemini 4 Argon (High)", "Gemini 4 Argon (Low)",
+                    "Gemini 4 Hydrogen (High)", "Gemini 4 Hydrogen (XHigh)", "Gemini 4 Hydrogen (Medium)",
+                    "Gemini 4 Hydrogen (Low)", "Orchestrator (Argon)",
+                    "Gemini 3.8 Flash (High)", "Gemini 3.8 Flash (Medium)", "Gemini 3.8 Flash (Low)",
+                    "Claude Opus 5.5 (Low)", "Claude Opus 5.5 (Medium)", "Claude Opus 5.5 (High)",
+                    "Claude Sonnet 5.5 (Low)", "Claude Sonnet 5.5 (Medium)", "Claude Sonnet 5.5 (High)",
+                    "GPT-OSS 120B (Medium)"],   # = `agy models` (agy's OWN catalog, not the claude provider)
 }
 # Thinking / reasoning levels per provider (a CLI flag at launch): claude `--effort`, codex
 # `-c model_reasoning_effort`, opencode `--variant` (provider-specific reasoning effort). antigravity
 # has none — it bakes the level into the model name. A provider absent here -> no thinking control.
+# codex lists only the levels EVERY listed codex model accepts: 'ultra' is per-model (not on luna), so
+# just the wizard's per-model lists offer it.
 _PROVIDER_THINKING = {
-    "claude":   ["low", "medium", "high", "max"],
-    "codex":    ["minimal", "low", "medium", "high"],
+    "claude":   ["low", "medium", "high", "xhigh", "max"],
+    "codex":    ["low", "medium", "high", "xhigh", "max"],
     "opencode": ["minimal", "low", "medium", "high", "max"],
 }
 

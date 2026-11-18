@@ -359,6 +359,7 @@ def test_agy_model_with_thinking_helper():
     assert agent._agy_model_with_thinking("Gemini 3.5 Flash", "high") == "Gemini 3.5 Flash (High)"
     assert agent._agy_model_with_thinking("Gemini 3.5 Flash", "medium") == "Gemini 3.5 Flash (Medium)"
     assert agent._agy_model_with_thinking("Gemini 3.1 Pro", "low") == "Gemini 3.1 Pro (Low)"
+    assert agent._agy_model_with_thinking("Gemini 4 Hydrogen", "xhigh") == "Gemini 4 Hydrogen (XHigh)"  # agy 1.5: XHigh
     assert agent._agy_model_with_thinking("Gemini 3.5 Flash (High)", "high") == "Gemini 3.5 Flash (High)"
     assert agent._agy_model_with_thinking("Claude Opus 4.6 (Thinking)", "") == "Claude Opus 4.6 (Thinking)"
     assert agent._agy_model_with_thinking("Gemini 3.5 Flash", "max") == "Gemini 3.5 Flash"   # no variant

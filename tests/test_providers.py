@@ -242,12 +242,24 @@ def test_launch_command_codex_model_and_reasoning(tmp_path, monkeypatch):
 
 
 def test_launch_command_codex_skips_invalid_reasoning(tmp_path, monkeypatch):
-    """A non-codex level like claude's 'max' is NOT passed to codex (it would reject it)."""
+    """A level codex has no name for (a typo, another CLI's level) is NOT passed to codex (it would
+    reject it) -- codex keeps its own default instead."""
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     project_dir = tmp_path / "proj"; project_dir.mkdir()
-    cmd = agent.launch_command("cx1", "gpt-5", project_dir, provider="codex", effort="max")
+    cmd = agent.launch_command("cx1", "gpt-5", project_dir, provider="codex", effort="turbo")
     content = Path(cmd[2]).read_text(encoding="utf-8")
-    assert "model_reasoning_effort" not in content      # 'max' invalid for codex -> skipped
+    assert "model_reasoning_effort" not in content      # unknown level -> skipped
+
+
+def test_launch_command_codex_max_and_ultra_reasoning(tmp_path, monkeypatch):
+    """codex's current models list 'max' (all of them) and 'ultra' (sol/astra/terra) as reasoning
+    levels, so both must reach the launch.  'max' used to be dropped as claude-only, which silently ran
+    a codex seat configured for max at codex's own default -- LOW on gpt-6.1-sol / gpt-6-astra."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    project_dir = tmp_path / "proj"; project_dir.mkdir()
+    for level in ("max", "ultra"):
+        cmd = agent.launch_command("cx1", "gpt-6.1-sol", project_dir, provider="codex", effort=level)
+        assert f'model_reasoning_effort="{level}"' in Path(cmd[2]).read_text(encoding="utf-8")
 
 
 def test_launch_command_codex_xhigh_reasoning(tmp_path, monkeypatch):

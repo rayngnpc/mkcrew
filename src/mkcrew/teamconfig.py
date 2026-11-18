@@ -8,14 +8,14 @@ from pathlib import Path
 def default_team() -> list[dict]:
     """Return the default 8-agent team definition (uniform workers + planner; no special reviewer)."""
     return [
-        {"role": "main",     "model": "claude-opus-4-8",   "effort": "max",  "window": "main",    "mode": "bypassPermissions"},
-        {"role": "worker1",  "model": "claude-opus-4-8",   "effort": "high", "window": "worker1", "mode": "bypassPermissions"},
-        {"role": "worker2",  "model": "claude-sonnet-5", "effort": "high", "window": "worker2", "mode": "bypassPermissions"},
-        {"role": "worker3",  "model": "claude-opus-4-8",   "effort": "high", "window": "worker3", "mode": "bypassPermissions"},
-        {"role": "worker4",  "model": "claude-sonnet-5", "effort": "high", "window": "worker4", "mode": "bypassPermissions"},
-        {"role": "worker5",  "model": "claude-opus-4-8",   "effort": "high", "window": "worker5", "mode": "bypassPermissions"},
-        {"role": "worker6",  "model": "claude-sonnet-5", "effort": "high", "window": "worker6", "mode": "bypassPermissions"},
-        {"role": "planner",  "model": "claude-opus-4-8",   "effort": "high", "window": "plan",    "mode": "bypassPermissions"},  # read-only enforced by prompt in Phase 2 (plan mode breaks the inbox read + mk-done)
+        {"role": "main",     "model": "claude-opus-5-5",   "effort": "max",  "window": "main",    "mode": "bypassPermissions"},
+        {"role": "worker1",  "model": "claude-opus-5-5",   "effort": "high", "window": "worker1", "mode": "bypassPermissions"},
+        {"role": "worker2",  "model": "claude-sonnet-5-5", "effort": "high", "window": "worker2", "mode": "bypassPermissions"},
+        {"role": "worker3",  "model": "claude-opus-5-5",   "effort": "high", "window": "worker3", "mode": "bypassPermissions"},
+        {"role": "worker4",  "model": "claude-sonnet-5-5", "effort": "high", "window": "worker4", "mode": "bypassPermissions"},
+        {"role": "worker5",  "model": "claude-opus-5-5",   "effort": "high", "window": "worker5", "mode": "bypassPermissions"},
+        {"role": "worker6",  "model": "claude-sonnet-5-5", "effort": "high", "window": "worker6", "mode": "bypassPermissions"},
+        {"role": "planner",  "model": "claude-opus-5-5",   "effort": "high", "window": "plan",    "mode": "bypassPermissions"},  # read-only enforced by prompt in Phase 2 (plan mode breaks the inbox read + mk-done)
     ]
 
 
@@ -107,7 +107,7 @@ def build_team(count: int, providers=None, models=None, efforts=None, mode=None)
             agents[i]["model"] = m.strip()
             explicit_model.add(i)
     # A non-claude agent with NO explicit model must NOT inherit the claude roster default (every
-    # roster model is claude-*): persisting e.g. "claude-sonnet-5" on an opencode agent is
+    # roster model is claude-*): persisting e.g. "claude-sonnet-5-5" on an opencode agent is
     # misleading. Blank it so team.config reflects reality and the provider CLI picks its own default.
     for i, a in enumerate(agents):
         if (i not in explicit_model and a.get("provider", "claude") != "claude"

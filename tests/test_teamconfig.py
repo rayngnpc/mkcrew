@@ -22,7 +22,7 @@ def test_default_team_roles():
 def test_default_team_main_agent():
     team = teamconfig.default_team()
     main = next(a for a in team if a["role"] == "main")
-    assert main["model"] == "claude-opus-4-8"
+    assert main["model"] == "claude-opus-5-5"
     assert main["effort"] == "max"
     assert main["window"] == "main"
     assert main["mode"] == "bypassPermissions"
@@ -32,7 +32,7 @@ def test_default_team_opus_agents():
     team = teamconfig.default_team()
     for role in ("worker1", "worker3", "worker5"):   # the opus-model workers
         a = next(x for x in team if x["role"] == role)
-        assert a["model"] == "claude-opus-4-8"
+        assert a["model"] == "claude-opus-5-5"
         assert a["effort"] == "high"
         assert a["window"] == role
         assert a["mode"] == "bypassPermissions"
@@ -42,7 +42,7 @@ def test_default_team_sonnet_agents():
     team = teamconfig.default_team()
     for role in ("worker2", "worker4", "worker6"):   # the sonnet-model workers
         a = next(x for x in team if x["role"] == role)
-        assert a["model"] == "claude-sonnet-5"
+        assert a["model"] == "claude-sonnet-5-5"
         assert a["effort"] == "high"
         assert a["window"] == role
         assert a["mode"] == "bypassPermissions"
@@ -57,7 +57,7 @@ def test_default_team_has_no_reviewer():
 def test_default_team_planner():
     team = teamconfig.default_team()
     planner = next(a for a in team if a["role"] == "planner")
-    assert planner["model"] == "claude-opus-4-8"
+    assert planner["model"] == "claude-opus-5-5"
     assert planner["effort"] == "high"
     assert planner["window"] == "plan"
     # bypassPermissions (NOT plan mode): plan mode blocks the cross-dir inbox read
@@ -300,7 +300,7 @@ def test_build_team_non_claude_blank_model_drops_claude_default():
     leave it blank so team.config reflects reality and the provider CLI picks its own default."""
     agents = teamconfig.build_team(2, ["claude", "opencode"])   # no models given
     assert agents[1]["provider"] == "opencode"
-    assert agents[1]["model"] == ""                             # NOT "claude-sonnet-5"
+    assert agents[1]["model"] == ""                             # NOT "claude-sonnet-5-5"
     assert agents[0]["model"] == teamconfig.default_team()[0]["model"]   # claude agent keeps its default
     # an EXPLICIT (even claude-*) model on a non-claude agent is still honored — only inherited defaults drop
     agents2 = teamconfig.build_team(2, ["claude", "codex"], models=["", "gpt-5-codex"])

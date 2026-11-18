@@ -230,34 +230,34 @@ def _model_arg(model: str, flag: str = "-m") -> str:
     emitting a dangling `--model`/`-m` with NO value makes the CLI treat the next token (or EOL) wrong
     and print usage then EXIT — the antigravity `agy --dangerously-skip-permissions --model<EOL>`
     blank-pane bug (worker config left model="", which agy carries inside the model name). Names with
-    spaces (e.g. antigravity's 'Gemini 3.5 Flash (High)') are QUOTED so the .cmd passes them as one arg."""
+    spaces (e.g. antigravity's 'Gemini 3.8 Flash (High)') are QUOTED so the .cmd passes them as one arg."""
     if not str(model).strip() or str(model).startswith("claude-"):
         return ""
     m = f'"{model}"' if " " in str(model) else str(model)
     return f" {flag} {m}"
 
 
-_CODEX_EFFORTS = {"minimal", "low", "medium", "high", "xhigh"}   # codex's valid reasoning levels (incl. xhigh)
+_CODEX_EFFORTS = {"minimal", "low", "medium", "high", "xhigh", "max", "ultra"}   # codex's reasoning-level names
 
 def _codex_effort(effort) -> str:
     """Codex reasoning level via a `-c` config override. Only the levels codex accepts are passed
-    (claude's 'max', or any unset value, is skipped so codex keeps its default instead of erroring)."""
+    (an unknown or unset value is skipped so codex keeps its default instead of erroring)."""
     return f' -c model_reasoning_effort="{effort}"' if effort in _CODEX_EFFORTS else ""
 
 
 # agy (antigravity) has NO launch-time reasoning-effort flag — it carries the thinking level INSIDE the
-# --model value as a "(Level)" variant suffix (e.g. "Gemini 3.5 Flash (High)"), the exact form agy itself
+# --model value as a "(Level)" variant suffix (e.g. "Gemini 3.8 Flash (High)"), the exact form agy itself
 # persists to ~/.gemini/antigravity-cli/settings.json and `agy models` lists.  Map our generic effort
-# names to agy's capitalized suffix levels (Gemini Flash: Low/Medium/High; Pro: Low/High).
-_AGY_THINKING_LEVELS = {"low": "Low", "medium": "Medium", "high": "High"}
+# names to agy's capitalized suffix levels (Low/Medium/High everywhere; XHigh where agy lists it).
+_AGY_THINKING_LEVELS = {"low": "Low", "medium": "Medium", "high": "High", "xhigh": "XHigh"}
 
 def _agy_model_with_thinking(model: str, effort) -> str:
     """Fold the picked thinking level into agy's model-variant name so the chosen effort ACTUALLY
     reaches the launch (agy exposes no effort flag — thinking rides in --model, e.g.
-    "Gemini 3.5 Flash (High)").  Returned UNCHANGED for: a blank/claude-* model (the CLI handles it),
+    "Gemini 3.8 Flash (High)").  Returned UNCHANGED for: a blank/claude-* model (the CLI handles it),
     an effort agy has no variant for ('max'/unknown -> agy keeps the model's own default), or a model
-    that ALREADY carries a "(...)" variant suffix (e.g. the fixed "Claude Opus 4.6 (Thinking)" or a
-    pre-built "Gemini 3.5 Flash (High)") — so we never double the suffix and never drop the effort."""
+    that ALREADY carries a "(...)" variant suffix (e.g. the fixed "Orchestrator (Argon)" or a
+    pre-built "Gemini 3.8 Flash (High)") — so we never double the suffix and never drop the effort."""
     m = str(model).strip()
     level = _AGY_THINKING_LEVELS.get(str(effort).strip().lower()) if effort else None
     if not m or m.startswith("claude-") or level is None:
@@ -397,7 +397,7 @@ def _agent_command_line(provider: str, model: str, mode: str,
         #   are --model, --continue/--conversation, --dangerously-skip-permissions, -i/--prompt-interactive,
         #   -p/--print, --sandbox).  It carries the thinking level INSIDE the --model value as a
         #   "(High)"/"(Medium)"/"(Low)" suffix — the exact form agy persists to
-        #   ~/.gemini/antigravity-cli/settings.json (e.g. "Gemini 3.5 Flash (High)") and `agy models`
+        #   ~/.gemini/antigravity-cli/settings.json (e.g. "Gemini 3.8 Flash (High)") and `agy models`
         #   lists.  So the wizard's separately-picked effort is FOLDED onto the base model name here
         #   (_agy_model_with_thinking) into ONE --model value that actually reaches the launch — no
         #   silently-dropped control, and no separate effort/-c flag (agy has none).

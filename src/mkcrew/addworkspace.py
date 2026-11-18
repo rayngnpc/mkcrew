@@ -85,30 +85,38 @@ def _template_preview(key: str) -> str:
 # is per-agent AND model-dependent, never one global value.
 _MODELS = {
     "claude": [
-        ("claude-opus-4-8",  "Claude Opus 4.8",  ["low", "medium", "high", "max"]),
-        ("claude-sonnet-5",  "Claude Sonnet 5",  ["low", "medium", "high", "max"]),
-        ("claude-haiku-4-5", "Claude Haiku 4.5", ["low", "medium", "high"]),
-        ("claude-fable-5",   "Claude Fable 5",   ["low", "medium", "high"]),
+        ("claude-opus-5-5",   "Claude Opus 5.5",   ["low", "medium", "high", "xhigh", "max"]),
+        ("claude-sonnet-5-5", "Claude Sonnet 5.5", ["low", "medium", "high", "xhigh", "max"]),
+        ("claude-haiku-5-5",  "Claude Haiku 5.5",  ["low", "medium", "high"]),
+        ("claude-fable-5-2",  "Claude Fable 5.2",  ["low", "medium", "high"]),
         # ponytail: effort ceilings are best-effort per tier ('max' on the strong pair) — trivial to edit.
     ],
     "codex": [
-        ("gpt-5.5", "GPT-5.5", ["low", "medium", "high", "xhigh"]),
-        ("gpt-5.4", "GPT-5.4", ["low", "medium", "high", "xhigh"]),
-        # confirm: codex model-id strings for the 5.4 line (assumed to mirror 'gpt-5.5'); the mini
-        # variant caps reasoning at 'high' (no 'xhigh').
-        ("gpt-5.4-mini", "GPT-5.4 mini", ["low", "medium", "high"]),
+        # = codex's own picker ($CODEX_HOME/models_cache.json: slug, display name, supported levels).
+        ("gpt-6.1-sol",   "GPT-6.1-Sol",   ["low", "medium", "high", "xhigh", "max", "ultra"]),
+        ("gpt-6-astra",   "GPT-6-Astra",   ["low", "medium", "high", "xhigh", "max", "ultra"]),
+        ("gpt-6.1-terra", "GPT-6.1 Terra", ["low", "medium", "high", "xhigh", "max", "ultra"]),
+        ("gpt-6-sol",     "GPT-6-Sol",     ["low", "medium", "high", "xhigh", "max", "ultra"]),
+        ("gpt-6-luna",    "GPT-6-Luna",    ["low", "medium", "high", "xhigh", "max"]),            # luna: no 'ultra'
+        ("gpt-5.6-sol",   "GPT-5.6-Sol",   ["low", "medium", "high", "xhigh", "max", "ultra"]),
+        ("gpt-5.6-terra", "GPT-5.6-Terra", ["low", "medium", "high", "xhigh", "max", "ultra"]),
+        ("gpt-5.6-luna",  "GPT-5.6-Luna",  ["low", "medium", "high", "xhigh", "max"]),
     ],
     # agy carries the thinking level INSIDE the model name as a "(Level)" suffix (e.g.
-    # "Gemini 3.5 Flash (High)") — it has NO launch-time effort flag (verified `agy --help`).  So each
-    # model_id here is the BASE name and the agent's picked effort is FOLDED onto it at launch
-    # (agent._agy_model_with_thinking) into the real agy --model value — the chosen effort is no longer
-    # dropped.  Levels per `agy models`: Gemini Flash low/medium/high, Gemini Pro low/high.  The
-    # Claude-on-agy model has a FIXED "(Thinking)" variant (no level choice), so its model_id already
-    # carries that suffix and its effort list is EMPTY (the thinking picker hides, like an OpenCode route).
+    # "Gemini 4 Argon (High)") -- the launch does not pass agy's --effort flag.  So each model_id here
+    # is the BASE name and the agent's picked effort is FOLDED onto it at launch
+    # (agent._agy_model_with_thinking) into the real agy --model value -- the chosen effort is never
+    # dropped.  Levels per `agy models` (bases + their listed suffixes).  A model agy lists in ONE fixed
+    # form (Orchestrator, GPT-OSS) keeps that full name as its model_id and an EMPTY effort list (the
+    # thinking picker hides, like an OpenCode route).
     "antigravity": [
-        ("Gemini 3.5 Flash", "Gemini 3.5 Flash", ["low", "medium", "high"]),
-        ("Gemini 3.1 Pro", "Gemini 3.1 Pro", ["low", "high"]),
-        ("Claude Opus 4.6 (Thinking)", "Claude Opus 4.6 (Thinking)", []),
+        ("Gemini 4 Argon", "Gemini 4 Argon", ["low", "medium", "high"]),
+        ("Gemini 4 Hydrogen", "Gemini 4 Hydrogen", ["low", "medium", "high", "xhigh"]),
+        ("Gemini 3.8 Flash", "Gemini 3.8 Flash", ["low", "medium", "high"]),
+        ("Claude Opus 5.5", "Claude Opus 5.5", ["low", "medium", "high"]),
+        ("Claude Sonnet 5.5", "Claude Sonnet 5.5", ["low", "medium", "high"]),
+        ("Orchestrator (Argon)", "Orchestrator (Argon)", []),
+        ("GPT-OSS 120B (Medium)", "GPT-OSS 120B (Medium)", []),
     ],
     # confirm: OpenCode routes don't expose a uniform thinking level yet -> effort lists left empty.
     # Routes reused from the previous roster; this picker renders as a Select (OpenCode has many routes).
@@ -127,12 +135,12 @@ _MODELS = {
 # template key, model, effort).
 _MENU_PRESETS = [
     ("Claude - Lead Left", "c", "claude", "1", "main-vertical", "", "high"),
-    ("Codex - Lead Left", "x", "codex", "1", "main-vertical", "gpt-5.5", "high"),
+    ("Codex - Lead Left", "x", "codex", "1", "main-vertical", "gpt-6.1-sol", "high"),
     ("OpenCode Zen - Lead Left", "o", "opencode", "1", "main-vertical", "opencode/big-pickle", ""),
     ("OpenCode Go - Lead Left", "g", "opencode", "1", "main-vertical", "opencode-go/minimax-m3", ""),
     ("Antigravity - Lead Left", "a", "antigravity", "1", "main-vertical", "", ""),
     ("Claude - Side by Side", "s", "claude", "2", "even-horizontal", "", "high"),
-    ("Codex - Side by Side", "X", "codex", "2", "even-horizontal", "gpt-5.5", "high"),
+    ("Codex - Side by Side", "X", "codex", "2", "even-horizontal", "gpt-6.1-sol", "high"),
     ("OpenCode Zen - Side by Side", "O", "opencode", "2", "even-horizontal", "opencode/big-pickle", ""),
     ("Claude - Lead Left + Files IDE", "i", "claude", "2", "lead-left-ide", "", "high"),
 ]
@@ -264,7 +272,7 @@ class AddWorkspaceApp(App):
     #count { layout: horizontal; }
     #count > RadioButton { width: auto; margin: 0 2 0 0; }
     /* item #1: the per-agent CLI / model / effort lists carry the longest, most-uneven labels (e.g.
-       'Opus 4.8 Thinking', 'Claude Sonnet 5'), so they STACK vertically — one option per line — which
+       'Claude Opus 5.5', 'Claude Sonnet 5.5'), so they STACK vertically — one option per line — which
        never collides or clips a model name (a horizontal row can't wrap in Textual). */
     .cli, .model, .effort { layout: vertical; }
     .modelsel { width: 100%; }                  /* OpenCode model picker is a Select (dropdown) */
@@ -346,7 +354,7 @@ class AddWorkspaceApp(App):
                                     model_rs.border_title = "Model"
                                     for j, (_v, label, _ef) in enumerate(_MODELS["claude"]):
                                         yield RadioButton(label, value=(j == 0))
-                                # effort options come from THIS agent's model (Claude Opus 4.8 by default).
+                                # effort options come from THIS agent's model (Claude Opus 5.5 by default).
                                 with RadioSet(id=f"effort{i}", classes="effort") as eff_rs:
                                     eff_rs.border_title = "Thinking"
                                     for e in _MODELS["claude"][0][2]:
@@ -925,7 +933,7 @@ def _build_add_command(folder: str, name: str, count: int, providers: list[str],
 
     `--providers` is always the comma-join of the per-agent CLI keys (length == count).  `--models`
     and `--efforts` are each per-agent comma lists, emitted ONLY if at least one slot is non-empty —
-    empty slots stay as empty strings so positions line up (e.g. `claude,,gpt-5.5` / `high,,xhigh`).
+    empty slots stay as empty strings so positions line up (e.g. `claude,,gpt-6.1-sol` / `high,,xhigh`).
     `force=True` appends `--force` so the backend overwrites an existing `.mkcrew` setup."""
     models = models or []
     efforts = efforts or []
