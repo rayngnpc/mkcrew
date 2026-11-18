@@ -128,10 +128,6 @@ button.pn:focus-visible{outline-offset:-2px}
 .tw .h b,.tw .tx{color:var(--term-tx)}
 .tw .h .n{margin-left:auto}
 .tw .h .m{margin-left:2ch}
-.files{display:flex;height:100%}
-.files span{flex:1;min-width:0;overflow:hidden;padding:0 8px;border-left:1px solid var(--term-rule);font:12px/1.4 var(--sans)}
-.files span:first-child{flex:.8;border-left:0;padding-left:0}
-.files span:last-child{flex:1.6}
 @container (max-width:700px){.tbar .hints{display:none}}
 @container (max-width:520px){.tbody{aspect-ratio:1.45/1}.term{font-size:10.5px}.pb .note{font-size:11px}}
 
@@ -170,7 +166,7 @@ button.pn:focus-visible{outline-offset:-2px}
 .mini rect{fill:none;stroke:var(--term-rule);stroke-width:1;vector-effect:non-scaling-stroke}
 .mini .ld{fill:color-mix(in srgb,var(--azure) 30%,transparent)}
 .mini .pln{fill:color-mix(in srgb,var(--violet) 30%,transparent)}
-.mini .twr,.mini .fls{fill:color-mix(in srgb,var(--term-dim) 22%,transparent)}
+.mini .twr{fill:color-mix(in srgb,var(--term-dim) 22%,transparent)}
 .tpl .nm{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-top:9px}
 .tpl .nm b{font-weight:650}
 .tpl .ds{display:block;margin-top:2px;color:var(--tx-2);font-size:12.5px;line-height:1.45}
@@ -472,13 +468,6 @@ function paneRects(layout, n) {
     case 'pages':                                              // a grid of agents over a tower strip (6 per page)
       grid(all, 0, 80, seat); P.push({k: 'tower', x: 0, y: 80, w: 100, h: 20});
       break;
-    case 'lead-left-ide': {                                    // agents stacked left, the files IDE full height right
-      const lw = 56, nw = n - 1, mh = nw ? 200 / (2 + nw) : 100;
-      seat(0, 0, 0, lw, mh);
-      for (let i = 1; i < n; i++) seat(i, 0, mh + (i - 1) * (100 - mh) / nw, lw, (100 - mh) / nw);
-      P.push({k: 'files', x: lw, y: 0, w: 100 - lw, h: 100});
-      break;
-    }
     case 'hub':                                                // one tab per agent, a tower strip on each
       tabs = all; seat(0, 0, 0, 100, 75); P.push({k: 'tower', x: 0, y: 75, w: 100, h: 25});
       break;
@@ -534,7 +523,7 @@ function renderHeader() {
 }
 
 // ── render: cockpit preview ──────────────────────────────────────────────────
-const HINTS = [['a', 'add'], ['n', 'next'], ['z', 'zoom'], ['x', 'close'], ['d', 'detach'], ['Esc', 'unstick']];
+const HINTS = [['a', 'add'], ['f', 'peek'], ['n', 'next'], ['z', 'zoom'], ['x', 'close'], ['d', 'detach'], ['Esc', 'unstick']];
 function towerNode(rs) {
   const w = Math.max(...rs.map(r => r.length)) + 2;
   return el('div', {class: 'pb tw'},
@@ -565,9 +554,6 @@ function renderPreview() {
                           : 'Takes asks from the lead, reports back.'))));
     } else if (p.k === 'tower') {
       body.append(el('div', {class: 'pn' + vl, style}, el('span', {class: 'pl'}, el('span', {class: 'dim'}, 'tower')), towerNode(rs)));
-    } else {
-      body.append(el('div', {class: 'pn' + vl, style}, el('span', {class: 'pl'}, el('span', {class: 'dim'}, 'files')),
-        el('div', {class: 'pb'}, el('div', {class: 'files'}, el('span', null, 'tower'), el('span', null, 'explorer'), el('span', null, 'editor')))));
     }
   }
   trimTower();
@@ -681,7 +667,7 @@ function setCount(n) {
 
 // ── render: layout ───────────────────────────────────────────────────────────
 function miniSvg(layout) {                                     // numbers and fixed class names only
-  const rs = roles(), cls = p => p.k === 'tower' ? 'twr' : p.k === 'files' ? 'fls' : rs[p.i] === 'main' ? 'ld' : rs[p.i].includes('plan') ? 'pln' : '';
+  const rs = roles(), cls = p => p.k === 'tower' ? 'twr' : rs[p.i] === 'main' ? 'ld' : rs[p.i].includes('plan') ? 'pln' : '';
   const box = el('span', {class: 'minibox'});
   box.innerHTML = `<svg class="mini" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">` +
     paneRects(layout, rs.length).panes.map(p => `<rect class="${cls(p)}" x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}"/>`).join('') + `</svg>`;

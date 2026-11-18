@@ -1,10 +1,6 @@
 """Single source of truth for the workspace templates users pick.
 
-Two groups the pickers show:
-  - "normal":       core pane (control tower) + agent panes. NO file explorer/editor.
-  - "experimental": adds the files-IDE pane (core | explorer | editor).
-
-Every consumer reads from here so the grouping can't drift across surfaces:
+Every consumer reads from here so the offered set can't drift across surfaces:
   addworkspace.py (wizard / Ctrl-b A), studio.py + studio_ui.html (web/app),
   cli.py (mk add / mk start), layouts.py (builders).
 
@@ -15,18 +11,13 @@ popup, Studio, cli and layouts can all import it without cycles.
 
 from dataclasses import dataclass, asdict
 
-NORMAL = "normal"
-EXPERIMENTAL = "experimental"
-
 
 @dataclass(frozen=True)
 class Template:
     key: str
     label: str
-    group: str          # NORMAL | EXPERIMENTAL
-    files_ide: bool     # True -> files-IDE pane; False -> core pane + agents
     desc: str
-    add_capable: bool = True   # offered by `mk add` (the wizard). pages/dashboard are mk-start/Studio only.
+    add_capable: bool = True   # offered by `mk add` (the wizard).
     min_agents: int = 1
     max_agents: int = 4      # per-template fit ceiling: single-window layouts stay readable to ~4 agents;
                              # paged layouts (pages) raise this. Pickers allow up to 6 -- the fit-sort
@@ -38,20 +29,25 @@ class Template:
 
 # Order = display order in the pickers.
 TEMPLATES = [
-    Template("main-vertical", "LEAD LEFT", NORMAL, False,
+    Template("main-vertical", "LEAD LEFT",
              "Lead top-left, workers stacked on the right, tower bottom-left."),
-    Template("even-horizontal", "Side by Side", NORMAL, False,
+    Template("even-horizontal", "Side by Side",
              "Agents in side-by-side columns over a tower strip."),
-    Template("lead-left-ide", "LEAD LEFT + Files IDE", EXPERIMENTAL, True,
-             "LEAD LEFT plus the files IDE pane (tower | explorer | editor). Experimental."),
     # pages scales: the builder grids up to 6 agents per window (_PER_PAGE) + a core strip per tab,
     # so it's the template that actually FITS a 5-6 agent team; <=6 agents stays a single page.
-    Template("pages", "Pages", NORMAL, False,
+    Template("pages", "Pages",
              "Agents across paged grid windows, each with a tower strip.",
              max_agents=6),
 ]
 
 _BY_KEY = {t.key: t for t in TEMPLATES}
+
+RETIRED = {"lead-left-ide": "main-vertical"}
+
+
+def resolve(key):
+    """Return the successor key for a retired layout key, or `key` itself otherwise."""
+    return RETIRED.get(key, key)
 
 
 def get(key):
@@ -60,9 +56,6 @@ def get(key):
 def all_templates():
     return list(TEMPLATES)
 
-def by_group(group):
-    return [t for t in TEMPLATES if t.group == group]
-
 def keys():
     return [t.key for t in TEMPLATES]
 
@@ -70,17 +63,11 @@ def wizard_templates():
     """Templates the `mk add` wizard can build."""
     return [t for t in TEMPLATES if t.add_capable]
 
-def includes_files_ide(key):
-    t = _BY_KEY.get(key)
-    return bool(t and t.files_ide)
-
 
 if __name__ == "__main__":
-    # ponytail: guards the data itself (unique keys, valid groups, the split holds)
+    # ponytail: guards the data itself (unique keys, retired mapping, wizard set)
     assert len(keys()) == len(set(keys())), "duplicate template keys"
-    assert all(t.group in (NORMAL, EXPERIMENTAL) for t in TEMPLATES), "bad group"
-    assert includes_files_ide("lead-left-ide") is True
-    assert includes_files_ide("main-vertical") is False
-    assert [t.key for t in by_group(EXPERIMENTAL)] == ["lead-left-ide"], "exactly one experimental"
+    assert resolve("lead-left-ide") == "main-vertical"
+    assert resolve("main-vertical") == "main-vertical"
     assert all(t.add_capable for t in wizard_templates())
-    print("templates.py OK:", ", ".join(f"{t.key}[{t.group}{'+ide' if t.files_ide else ''}]" for t in TEMPLATES))
+    print("templates.py OK:", ", ".join(t.key for t in TEMPLATES))

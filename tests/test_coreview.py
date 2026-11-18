@@ -126,52 +126,23 @@ def test_render_core_jobs_use_professional_columns():
 
 
 def test_render_core_shows_hotkey_cheatsheet():
-    """The tower appends a GROUPED HOTKEYS cheatsheet BELOW TASKS: a
+    """The tower appends a HOTKEYS cheatsheet BELOW TASKS with the
     'Cockpit (Ctrl-b …)' group of the REAL prefix binds (a/A add + x/X close + Esc unstick rebound in
-    layouts.apply_chrome, plus curated psmux defaults like d detach / z zoom) and a 'Files pane' group of
-    the bare filesview.BINDINGS keys. Renders even on an empty cockpit (static chrome)."""
+    layouts.apply_chrome, plus curated psmux defaults like d detach / z zoom). Renders even on an empty cockpit."""
     out = coreview.render_core({}, [])
     assert "HOTKEYS" in out
     body = out[out.index("HOTKEYS"):]
     # Cockpit prefix group: rebound binds + curated psmux defaults, under a Ctrl-b group label.
     assert "Cockpit" in body and "Ctrl-b" in body
     assert "a / A" in body and "Add workspace" in body       # apply_chrome add-workspace popup (a/A)
+    pairs = coreview._HOTKEYS["Cockpit (Ctrl-b …)"]
+    add_i = pairs.index(("a / A", "Add workspace"))
+    assert pairs[add_i + 1] == ("f", "Peek files")          # apply_chrome peek popup (f/F)
+    assert "Peek files" in body
+    assert body.index("Add workspace") < body.index("Peek files")
     assert "Detach" in body and "Zoom pane" in body          # surfaced psmux defaults (d detach / z zoom)
     assert "Unstick" in body                                 # apply_chrome Esc -> send-keys -X cancel
-    # Files-pane group: the bare filesview.FilesApp.BINDINGS keys.
-    assert "Files pane" in body
-    assert "New file" in body and "Max editor" in body and "Explorer" in body   # n / z / ] binds
-    assert "Ctrl-s" in body and "Save" in body               # files-IDE save bind
-    assert "Ctrl-t" in body and "Tree" in body               # files-IDE refocus-tree bind
     assert out.index("TASKS") < out.index("HOTKEYS")         # sits below the TASKS section
-
-
-def test_render_core_compact_fits_files_column():
-    """The Files pane embeds core in a 34-column left rail, so compact mode must render a bounded
-    frame instead of the full wide table being cropped."""
-    roster = [
-        {"role": "main", "provider": "claude"},
-        {"role": "worker1_demo", "provider": "opencode"},
-    ]
-    agents = {"worker1_demo": {"state": "running", "job": "task-123456789", "task": "wide task text"}}
-    jobs = [JobView(id="task-123456789", frm="main", to="worker1_demo", status="DELIVERED")]
-
-    out = coreview.render_core(agents, jobs, roster=roster, compact=True)
-
-    assert "MKCREW tower" in out
-    assert "TEAM" in out and "TASKS" in out and "HOTKEYS" in out
-    assert "^←/^→ scroll" in out
-    assert max(coreview._vlen(line) for line in out.splitlines()) <= 34
-
-
-def test_render_core_compact_width_param_bounds_outer_frame():
-    """Compact mode honours an explicit inner `width`; the OUTER frame is width+4 (the filesview
-    column is sized to that, so the core box never wraps into the tree). Uses widths >= the compact
-    content's natural minimum so the frame is exactly width+4 and rectangular."""
-    for inner in (30, 36, 44):
-        out = coreview.render_core({}, [], compact=True, width=inner)
-        widths = {coreview._vlen(line) for line in out.splitlines() if line}
-        assert widths == {inner + 4}, f"width={inner}: {sorted(widths)}"
 
 
 def test_render_core_fits_the_pane():

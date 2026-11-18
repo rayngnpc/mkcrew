@@ -16,9 +16,6 @@ def main():
     elif sub == "core-view":
         sys.argv = [a[0], *a[2:]]
         from mkcrew import coreview; coreview.coreview_main()
-    elif sub == "files-view":
-        sys.argv = [a[0], *a[2:]]
-        from mkcrew import filesview; filesview.filesview_main()
     elif sub == "add-workspace":
         sys.argv = [a[0], *a[2:]]
         from mkcrew import addworkspace; addworkspace.addworkspace_main()

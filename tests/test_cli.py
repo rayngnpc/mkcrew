@@ -37,6 +37,26 @@ def test_main_routes_status_to_coreview(monkeypatch):
     assert called.get("hit") is True
 
 
+def test_main_routes_peek_to_peek_main(monkeypatch, capsys):
+    """`mk peek [dir]` is in COMMANDS, listed in usage, forwards argv, and exits non-zero on non-zero rc."""
+    import mkcrew.peek as _peek
+    assert "peek" in cli.COMMANDS
+    seen = []
+
+    def fake_peek_main(argv):
+        seen.append(argv)
+        return 0 if len(seen) == 1 else 2
+
+    monkeypatch.setattr(_peek, "main", fake_peek_main)
+    assert cli.main(["peek", "/tmp/proj"]) == 0
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["peek", "/nonexistent"])
+    assert exc.value.code == 2
+    assert seen == [["/tmp/proj"], ["/nonexistent"]]
+    assert cli.main([]) == 2
+    assert "peek" in capsys.readouterr().out
+
+
 # ---------------------------------------------------------------------------
 # P1-4: pend / trace / repair registered + basic arg handling
 # ---------------------------------------------------------------------------
@@ -613,7 +633,7 @@ def test_cmd_start_applies_chrome(monkeypatch, tmp_path):
     monkeypatch.setattr(sessions, "ensure", lambda p, role: ("u", True))
     monkeypatch.setattr(layouts, "get", lambda name: (lambda *a, **k: {"main": "%1"}))
     chrome = {"hit": False}
-    monkeypatch.setattr(layouts, "apply_chrome", lambda mux, name=None: chrome.update(hit=True))
+    monkeypatch.setattr(layouts, "apply_chrome", lambda mux, name=None, project=None: chrome.update(hit=True))
     fake_mux = type("M", (), {
         "kill_server": lambda self: None, "capture": lambda self, p: "trust",
         "send_enter": lambda self, p: None, "send_line": lambda self, p, t: None})()
@@ -641,7 +661,7 @@ def test_cmd_start_auto_attaches_unless_no_attach(monkeypatch, tmp_path):
     monkeypatch.setattr(teamconfig, "load_layout", lambda p: "hub")
     monkeypatch.setattr(sessions, "ensure", lambda p, role: ("u", True))
     monkeypatch.setattr(layouts, "get", lambda name: (lambda *a, **k: {"main": "%1"}))
-    monkeypatch.setattr(layouts, "apply_chrome", lambda mux, name=None: None)
+    monkeypatch.setattr(layouts, "apply_chrome", lambda mux, name=None, project=None: None)
     fake_mux = type("M", (), {
         "kill_server": lambda self: None, "capture": lambda self, p: "trust",
         "send_enter": lambda self, p: None, "send_line": lambda self, p, t: None})()
@@ -745,8 +765,8 @@ def test_cmd_layout_auto_measures_and_applies_live(tmp_path, monkeypatch, capsys
 
 
 def test_cmd_add_main_vertical_core_no_files(monkeypatch, tmp_path):
-    """`mk add` with the (default, NORMAL) main-vertical template builds a live CORE pane and carries NO
-    files-IDE. _main_vertical_layout's cells are lead, core, workers, so panes are created lead -> core ->
+    """`mk add` with the (default) main-vertical template builds a live CORE pane.
+    _main_vertical_layout's cells are lead, core, workers, so panes are created lead -> core ->
     workers (core SECOND). The final select-layout is a custom geometry string, not the bare
     'main-vertical' preset that would dump the core on the right with the workers."""
     from mkcrew import cli, layouts, teamconfig, frozen
@@ -757,7 +777,6 @@ def test_cmd_add_main_vertical_core_no_files(monkeypatch, tmp_path):
                          for r in ["main", "worker1", "worker2"][:count]])
     monkeypatch.setattr(layouts, "_launch", lambda a, project: ["agent", a["role"]])
     monkeypatch.setattr(frozen, "core_view_cmd", lambda p, orient="v": ["core-stub"])
-    monkeypatch.setattr(frozen, "files_view_cmd", lambda p: ["files-stub"])
     calls = []
     class FakeMux:
         def __init__(self):
@@ -775,7 +794,6 @@ def test_cmd_add_main_vertical_core_no_files(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "PsmuxBackend", FakeMux)
     cli.cmd_add([str(tmp_path), "--agents", "3", "--template", "main-vertical"])
     created = [c[1] for c in calls if c[0] == "split"]
-    assert ["files-stub"] not in created                 # NORMAL template -> no files-IDE pane
     assert created.count(["core-stub"]) == 1             # exactly one live core pane
     assert created[1] == ["core-stub"]                   # core created SECOND (before the workers)
     assert created[0][0] == "agent" and created[0][1].endswith(".main")   # lead created FIRST
@@ -797,7 +815,6 @@ def _add_recording_mux(monkeypatch, providers):
                          for i in range(count)])
     monkeypatch.setattr(layouts, "_launch", lambda a, project: ["agent", a["role"], a.get("provider")])
     monkeypatch.setattr(frozen, "core_view_cmd", lambda p, orient="v": ["core-stub"])
-    monkeypatch.setattr(frozen, "files_view_cmd", lambda p: ["files-stub"])
     calls = []
     class FakeMux:
         def __init__(self):
@@ -828,7 +845,6 @@ def test_cmd_add_rebalances_between_splits_and_spawns_all_agents(monkeypatch, tm
     cli.cmd_add([str(tmp_path), "--agents", "4",
                      "--providers", ",".join(providers), "--template", "main-vertical"])
     created = [c[1] for c in calls if c[0] == "split"]
-    assert ["files-stub"] not in created                            # NORMAL main-vertical -> no files pane
     assert created.count(["core-stub"]) == 1 and created[1] == ["core-stub"]   # one core pane, created SECOND
     assert sum(1 for c in created if c[0] == "agent") == 4           # ALL 4 agents spawned (not fewer)
     assert sum(1 for c in created if len(c) > 2 and c[2] == "codex") == 3   # the 3 codex agents are present
@@ -842,14 +858,13 @@ def test_cmd_add_rebalances_between_splits_and_spawns_all_agents(monkeypatch, tm
 
 def test_cmd_add_tiled_grids_agents_and_core_no_files(monkeypatch, tmp_path):
     """`mk add --template tiled` (GRID) builds an even grid of the agents + a live CORE pane via the
-    DETERMINISTIC _tiled_layout string (not the bare 'tiled' preset as the final layout) and carries NO
-    files-IDE. Valid checksum, one cell per pane at 4 agents + core."""
+    DETERMINISTIC _tiled_layout string (not the bare 'tiled' preset as the final layout).
+    Valid checksum, one cell per pane at 4 agents + core."""
     import re
     from mkcrew import cli, layouts
     calls = _add_recording_mux(monkeypatch, ["claude"] * 4)
     cli.cmd_add([str(tmp_path), "--agents", "4", "--template", "tiled"])
     created = [c[1] for c in calls if c[0] == "split"]
-    assert ["files-stub"] not in created                             # no files-IDE (NORMAL/plain template)
     assert sum(1 for c in created if c[0] == "agent") == 4           # all 4 agents spawned
     assert created.count(["core-stub"]) == 1 and created[-1] == ["core-stub"]   # core created LAST
     final = [c[1] for c in calls if c[0] == "layout"][-1]
@@ -860,8 +875,8 @@ def test_cmd_add_tiled_grids_agents_and_core_no_files(monkeypatch, tmp_path):
 
 
 def test_cmd_add_even_horizontal_core_no_files(monkeypatch, tmp_path):
-    """`mk add --template even-horizontal` (NORMAL SIDE-BY-SIDE) builds the tailored _sidebyside_core_layout:
-    the agents in a side-by-side row + a full-width core strip, and carries NO files-IDE. Panes are created
+    """`mk add --template even-horizontal` (SIDE-BY-SIDE) builds the tailored _sidebyside_core_layout:
+    the agents in a side-by-side row + a full-width core strip. Panes are created
     lead -> workers -> core (core LAST, matching the custom layout's cells), every split rebalanced to
     'tiled' so all panes spawn, and the FINAL select-layout is the custom geometry string -- NOT the bare
     psmux 'even-horizontal' preset."""
@@ -870,7 +885,6 @@ def test_cmd_add_even_horizontal_core_no_files(monkeypatch, tmp_path):
     calls = _add_recording_mux(monkeypatch, ["claude"] * 3)
     cli.cmd_add([str(tmp_path), "--agents", "3", "--template", "even-horizontal"])
     created = [c[1] for c in calls if c[0] == "split"]
-    assert ["files-stub"] not in created                            # no files-IDE (NORMAL template)
     assert sum(1 for c in created if c[0] == "agent") == 3           # all 3 agents spawned
     assert created.count(["core-stub"]) == 1 and created[-1] == ["core-stub"]     # core created LAST
     assert created[0][0] == "agent" and created[0][1].endswith(".main")           # lead created FIRST
@@ -883,28 +897,6 @@ def test_cmd_add_even_horizontal_core_no_files(monkeypatch, tmp_path):
     csum, geom = final.split(",", 1)
     assert layouts._layout_csum(geom) == csum                        # valid tmux checksum
     assert len(re.findall(r"\d+x\d+,\d+,\d+,\d+", geom)) == 4         # 3 agents + core = 4 cells
-
-
-def test_cmd_add_lead_left_ide_files_no_core(monkeypatch, tmp_path):
-    """`mk add --template lead-left-ide` (the EXPERIMENTAL template) builds the files-IDE LEAD-LEFT via
-    _main_vertical_with_files: a files-IDE pane and NO core pane (the registry's includes_files_ide=True
-    branch). Panes are created lead -> workers -> files (files LAST, matching the layout's cells); the
-    final select-layout is the custom files-IDE geometry, not a bare preset."""
-    import re
-    from mkcrew import cli, layouts
-    calls = _add_recording_mux(monkeypatch, ["claude"] * 3)
-    cli.cmd_add([str(tmp_path), "--agents", "3", "--template", "lead-left-ide"])
-    created = [c[1] for c in calls if c[0] == "split"]
-    assert ["core-stub"] not in created                             # EXPERIMENTAL -> no core pane (files-IDE carries it)
-    assert sum(1 for c in created if c[0] == "agent") == 3          # all 3 agents spawned
-    assert created.count(["files-stub"]) == 1 and created[-1] == ["files-stub"]   # files created LAST
-    assert created[0][0] == "agent" and created[0][1].endswith(".main")           # lead created FIRST
-    final = [c[1] for c in calls if c[0] == "layout"][-1]
-    assert final not in ("lead-left-ide", "main-vertical") and "{" in final        # custom files-IDE geometry
-    csum, geom = final.split(",", 1)
-    assert layouts._layout_csum(geom) == csum                        # valid tmux checksum
-    assert len(re.findall(r"\d+x\d+,\d+,\d+,\d+", geom)) == 4         # 3 agents + files = 4 cells
-    assert "x60,140,0," in geom                                      # files: full-height right column
 
 
 class _AddMux:
@@ -925,7 +917,7 @@ class _AddMux:
 
 
 def _stub_add(monkeypatch):
-    """Common cmd_add stubs: live session, stubbed launch/core/files, captured build_team args."""
+    """Common cmd_add stubs: live session, stubbed launch/core, captured build_team args."""
     from mkcrew import cli, layouts, teamconfig, frozen
     captured = {}
     def fake_build_team(count, providers=None, models=None, efforts=None):
@@ -936,7 +928,6 @@ def _stub_add(monkeypatch):
     monkeypatch.setattr(cli, "_session_exists", lambda mux, s: True)
     monkeypatch.setattr(layouts, "_launch", lambda a, project: ["agent", a["role"]])
     monkeypatch.setattr(frozen, "core_view_cmd", lambda p, orient="v": ["core-stub"])
-    monkeypatch.setattr(frozen, "files_view_cmd", lambda p: ["files-stub"])
     monkeypatch.setattr(cli, "PsmuxBackend", _AddMux)
     return captured
 
@@ -1124,7 +1115,7 @@ def test_cmd_start_writes_cockpit_lock(monkeypatch, tmp_path):
     monkeypatch.setattr(teamconfig, "load_layout", lambda p: "hub")
     monkeypatch.setattr(sessions, "ensure", lambda p, role: ("u", True))
     monkeypatch.setattr(layouts, "get", lambda name: (lambda *a, **k: {"main": "%1"}))
-    monkeypatch.setattr(layouts, "apply_chrome", lambda mux, name=None: None)
+    monkeypatch.setattr(layouts, "apply_chrome", lambda mux, name=None, project=None: None)
     fake_mux = type("M", (), {
         "kill_server": lambda self: None, "capture": lambda self, p: "trust",
         "send_enter": lambda self, p: None, "send_line": lambda self, p, t: None})()
@@ -1170,7 +1161,7 @@ def test_cmd_start_threads_workspace_name_into_lead_prompt(monkeypatch, tmp_path
     monkeypatch.setattr(sessions, "ensure", lambda p, role: ("u", True))
     monkeypatch.setattr(layouts, "get", lambda name: (lambda *a, **k: {"main": "%1"}))
     chrome = {}
-    monkeypatch.setattr(layouts, "apply_chrome", lambda mux, name=None: chrome.update(name=name))
+    monkeypatch.setattr(layouts, "apply_chrome", lambda mux, name=None, project=None: chrome.update(name=name))
     seen = {}
     monkeypatch.setattr(prompts, "lead_prompt",
                         lambda mk, team=None, mode="standard", provider="claude", name=None:

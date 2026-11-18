@@ -18,8 +18,9 @@ import math
 _MIN_COLS, _MIN_ROWS = 90, 28
 # px font height: below ~8 glyphs get illegible; 16 ~ the Windows console default (few panes).
 _MIN_FONT, _MAX_FONT = 8, 16
-_CELL_ASPECT = 0.5          # Consolas cell width ~= half its height (for the columns estimate)
-_FACE = "Consolas"
+_CELL_ASPECT = 0.5          # Consolas/Cascadia cell width ~= half its height (for the columns estimate)
+# Cascadia Mono first: it has U+2B22/U+25E7 (measured with GDI on Win11), which Consolas lacks; Consolas when absent.
+_FACES = ("Cascadia Mono", "Consolas")
 
 
 def screen_size():
@@ -55,14 +56,21 @@ def set_console_font(height):
                         ("FontFamily", ctypes.c_uint), ("FontWeight", ctypes.c_uint),
                         ("FaceName", ctypes.c_wchar * 32)]
         k = ctypes.windll.kernel32
-        info = _FONTINFOEX()
-        info.cbSize = ctypes.sizeof(_FONTINFOEX)
-        info.FontWidth = 0                            # 0 -> Windows derives the width for the TT face
-        info.FontHeight = int(height)
-        info.FontFamily = 0
-        info.FontWeight = 400
-        info.FaceName = _FACE
-        return bool(k.SetCurrentConsoleFontEx(k.GetStdHandle(-11), False, ctypes.byref(info)))
+        handle = k.GetStdHandle(-11)
+        for face in _FACES:
+            info = _FONTINFOEX()
+            info.cbSize = ctypes.sizeof(_FONTINFOEX)
+            info.FontWidth = 0                            # 0 -> Windows derives the width for the TT face
+            info.FontHeight = int(height)
+            info.FontFamily = 0
+            info.FontWeight = 400
+            info.FaceName = face
+            if k.SetCurrentConsoleFontEx(handle, False, ctypes.byref(info)):
+                info2 = _FONTINFOEX()
+                info2.cbSize = ctypes.sizeof(_FONTINFOEX)
+                if k.GetCurrentConsoleFontEx(handle, False, ctypes.byref(info2)) and info2.FaceName == face:
+                    return True
+        return False
     except Exception:
         return False
 

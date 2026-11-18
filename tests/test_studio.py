@@ -301,7 +301,7 @@ def test_profiles_storage_layer_roundtrips_full_config(tmp_path, monkeypatch):
     needs only the POST /api/profiles handler widened to pass those fields through to profiles.save."""
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     from mkcrew import profiles
-    full = {"count": 4, "layout": "lead-left-ide", "mode": "fast",
+    full = {"count": 4, "layout": "main-vertical", "mode": "fast",
             "providers": ["claude", "codex", "opencode", "claude"],
             "models": ["claude-opus-4-8", "gpt-5.5", "opencode/big-pickle", ""],
             "efforts": ["max", "high", "low", ""], "wsName": "Testing"}
@@ -363,8 +363,24 @@ def test_pages_template_fits_six_agents_others_stay_four():
     the fit-sort steers big teams to it; single-window layouts stay honest at 4 (readability)."""
     from mkcrew import templates
     assert templates.get("pages").max_agents == 6
-    for key in ("main-vertical", "even-horizontal", "lead-left-ide"):
+    for key in ("main-vertical", "even-horizontal"):
         assert templates.get(key).max_agents == 4, key
+
+
+def test_save_config_resolves_retired_layout(tmp_path):
+    """If a saved Studio profile carries a retired layout key into save_config, it persists the successor."""
+    res = studio.save_config(tmp_path, count=2, layout="lead-left-ide")
+    assert res["layout"] == "main-vertical"
+    data = _json.loads((tmp_path / ".mkcrew" / "team.config").read_text(encoding="utf-8"))
+    assert data["layout"] == "main-vertical"
+
+
+def test_read_config_resolves_retired_layout(tmp_path):
+    """Studio read_config resolves a retired layout key from team.config so the UI gets a valid key."""
+    cfg = tmp_path / ".mkcrew" / "team.config"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(_json.dumps({"layout": "lead-left-ide", "agents": []}), encoding="utf-8")
+    assert studio.read_config(tmp_path)["layout"] == "main-vertical"
 
 
 def test_save_config_chief_mode_persists_planner_seat(tmp_path):
@@ -438,6 +454,27 @@ def test_page_makes_no_network_requests():
     import re
     urls = set(re.findall(r"https?://[^\s\"')<]+", _page()))
     assert urls <= {"http://www.w3.org/2000/svg"}, urls
+
+
+def test_page_preview_hints_include_peek_after_add():
+    """The cockpit preview bar keeps its Ctrl-b hints aligned with layouts.py: f peek sits directly
+    after a add."""
+    import ast
+    import re
+    m = re.search(r"const HINTS = (\[.*?\]);", _page(), re.DOTALL)
+    assert m is not None
+    hints = ast.literal_eval(m.group(1))
+    add_i = hints.index(["a", "add"])
+    assert hints[add_i + 1] == ["f", "peek"]
+
+
+def test_console_font_script_prefers_cascadia_mono_with_consolas_fallback():
+    """Consolas lacks U+2B22 and U+25E7; _CONSOLE_FONT_PS1 picks Cascadia Mono when installed,
+    falling back to Consolas."""
+    ps = studio._CONSOLE_FONT_PS1
+    assert "Cascadia Mono" in ps
+    assert "Consolas" in ps
+    assert "InstalledFontCollection" in ps
 
 
 

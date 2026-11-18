@@ -145,7 +145,7 @@ def test_is_resumable_checks_account_wrapper_config_dir(tmp_path, monkeypatch):
     assert sessions._claude_config_dir(str(wrapper)) == work_dir      # grep + expandvars works on .cmd
     assert sessions._claude_config_dir(None) == (sessions.Path.home() / ".claude")
     sid = "11111111-2222-3333-4444-555555555555"
-    enc = _re.sub(r"[:\\/]", "-", str(proj))
+    enc = _re.sub(r"[^A-Za-z0-9_-]", "-", str(proj))
     # transcript exists ONLY under the wrapper's dir -> resumable with bin, NOT bare
     tdir = work_dir / "projects" / enc; tdir.mkdir(parents=True)
     (tdir / f"{sid}.jsonl").write_text("{}", encoding="utf-8")

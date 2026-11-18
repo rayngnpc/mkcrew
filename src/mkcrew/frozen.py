@@ -39,15 +39,6 @@ def core_view_cmd(project, orient: str = "v") -> list:
     return cmd
 
 
-def files_view_cmd(project) -> list:
-    """The files-view pane command (IDE file explorer). Frozen -> re-invoke the single exe; dev ->
-    `python -m mkcrew.filesview` (robust even when the mk-files-view console script isn't regenerated
-    on an incremental editable reinstall)."""
-    if is_frozen():
-        return [sys.executable, "files-view", str(project), "cockpit"]
-    return [sys.executable, "-m", "mkcrew.filesview", str(project), "cockpit"]
-
-
 def add_workspace_cmd() -> list:
     """The in-cockpit add-workspace picker command (run by the Ctrl-b A popup)."""
     if is_frozen():
@@ -72,6 +63,20 @@ def add_workspace_launcher() -> str:
         encoding="utf-8")
     # BACKSLASH path: the bind runs this and tmux preserves backslashes in a single token; a forward-
     # slash path would break the PowerShell variant. No spaces, so it survives the key-bind re-tokenize.
+    return str(launcher)
+
+
+def peek_launcher(project=None) -> str:
+    """Write the one-token popup launcher with the cockpit project as its argument."""
+    from . import config
+    binp = config.runtime_root() / "bin"
+    binp.mkdir(parents=True, exist_ok=True)
+    launcher = binp / "peek.cmd"
+    executable = sys.executable.replace("%", "%%")
+    root = str(Path(project or Path.cwd()).resolve()).replace("%", "%%")
+    command = (f'@"{executable}" peek "{root}"\r\n' if is_frozen()
+               else f'@"{executable}" -m mkcrew.peek "{root}"\r\n')
+    launcher.write_bytes(command.encode("utf-8"))
     return str(launcher)
 
 

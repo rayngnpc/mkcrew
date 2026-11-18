@@ -101,12 +101,11 @@ def save_catalog(data: dict) -> dict:
     return {"ok": True, "path": str(p)}
 
 # Preferred monitor shape per layout ('wide' | 'tall' | None) — the ONE fit hint that isn't in the
-# frozen registry (templates.py owns key/label/group/files_ide/desc + the agent range). The Studio
+# frozen registry (templates.py owns key/label/desc + the agent range). The Studio
 # gallery scores + sorts cards by how well they fit the chosen agent count + screen shape.
 _TEMPLATE_SCREEN = {
     "main-vertical":   "wide",   # lead dominant + stacked column reads best wide
     "even-horizontal": "wide",   # a row of agents wants width
-    "lead-left-ide":   "wide",   # LEAD LEFT + the files-IDE strip -> wide
     # pages / dashboard: no shape preference (paged grids fit any monitor)
 }
 
@@ -153,12 +152,12 @@ def detect_clis() -> dict:
 def list_templates() -> list:
     """The layouts the Studio gallery offers, straight from the frozen registry (templates.py) so the
     web + app can't drift from the wizard. Each dict carries the registry fields the UI reads
-    (key/label/group/files_ide/desc, in display order) plus `name` (alias of label the gallery/modal
+    (key/label/desc, in display order) plus `name` (alias of label the gallery/modal
     render), the fit-sort agent range (`min`/`max`, derived from min_agents/max_agents) and a
     screen-shape hint (`screen`: 'wide' | 'tall' | None)."""
     out = []
     for t in templates.all_templates():
-        d = t.to_dict()                         # key, label, group, files_ide, desc, add_capable, min/max_agents
+        d = t.to_dict()                         # key, label, desc, add_capable, min/max_agents
         d["name"] = t.label                     # gallery/modal render `name`; keep `label` too
         d["min"], d["max"] = t.min_agents, t.max_agents
         d["screen"] = _TEMPLATE_SCREEN.get(t.key)
@@ -185,7 +184,8 @@ def read_config(project_dir) -> dict:
     cfg = teamconfig._config_path(project_dir)
     name = _workspace_label(project_dir)
     if cfg.exists():
-        return {"agents": teamconfig.load_team(project_dir), "layout": teamconfig.load_layout(project_dir),
+        return {"agents": teamconfig.load_team(project_dir),
+                "layout": templates.resolve(teamconfig.load_layout(project_dir)),
                 "mode": teamconfig.load_mode(project_dir), "name": name, "configured": True}
     return {"agents": teamconfig.default_team(), "layout": "main-vertical", "mode": "standard",
             "name": name, "configured": False}
@@ -195,6 +195,7 @@ def save_config(project_dir, count: int, layout: str, providers=None, mode: str 
                 models=None, efforts=None, name=None) -> dict:
     """Build + persist the team.config for this project (per-agent provider/model/thinking). A non-blank
     `name` is persisted as the workspace identity (FIX #4); the returned `name` is the resolved label."""
+    layout = templates.resolve(layout)
     agents = teamconfig.build_team(count, providers, models, efforts, mode=mode)
     teamconfig.write_team(project_dir, agents, layout, mode)
     if name:
@@ -218,6 +219,7 @@ def is_session_running() -> bool:
 
 # Shrinks ONLY this console's font (Win32 SetCurrentConsoleFontEx) so the cockpit gets far more
 # rows/cols -> readable panes at 4+ agents. Does NOT touch the OS display or any other terminal.
+# Picks Cascadia Mono when installed (renders U+2B22 / U+25E7 that Consolas lacks), else Consolas.
 _CONSOLE_FONT_PS1 = r'''try {
 Add-Type @"
 using System;
@@ -231,10 +233,12 @@ public class CF {
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)] public string FaceName; }
 }
 "@
+Add-Type -AssemblyName System.Drawing
+$face = if ((New-Object System.Drawing.Text.InstalledFontCollection).Families.Name -contains 'Cascadia Mono') { 'Cascadia Mono' } else { 'Consolas' }
 $f = New-Object CF+CONSOLE_FONT_INFOEX
 $f.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf($f)
 $f.FontHeight = 12        # px -- smaller = more content per pane (tune to taste; Windows default ~16)
-$f.FaceName = "Consolas"
+$f.FaceName = $face
 $f.FontWeight = 400
 [CF]::SetCurrentConsoleFontEx([CF]::GetStdHandle(-11), $false, [ref]$f) | Out-Null
 } catch {}

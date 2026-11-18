@@ -34,17 +34,12 @@ _PROVIDER_OPTIONS = [
 _PROVIDERS = [key for key, _label, _desc in _PROVIDER_OPTIONS]
 _COUNTS = ["1", "2", "3", "4", "5", "6"]                                # pages grids <=6/window; single-window layouts best <=4
 _EFFORTS = ["low", "medium", "high", "max"]            # generic fallback thinking levels (per-model lists win)
-# The Layout step groups the FROZEN templates registry (single source of truth) into two headed radio
-# groups: "Normal" (add-capable core layouts) and "Experimental" (the files-IDE layout).  The selected
-# radio's registry key is the template, emitted verbatim as `--template <key>` — no second "Plain" mode
-# (the old Template/Plain toggle just offered the same two layouts twice).
-_NORMAL_TEMPLATES = [t for t in templates.by_group(templates.NORMAL) if t.add_capable]
-_EXPERIMENTAL_TEMPLATES = templates.by_group(templates.EXPERIMENTAL)
-_DEFAULT_TEMPLATE_KEY = _NORMAL_TEMPLATES[0].key          # main-vertical (LEAD LEFT)
+# The Layout step lists the FROZEN templates registry's add-capable layouts in display order.
+_TEMPLATES = templates.wizard_templates()
+_DEFAULT_TEMPLATE_KEY = _TEMPLATES[0].key                 # main-vertical (LEAD LEFT)
 # Item #6: a tiny ASCII sketch per offered template, shown inline on the Layout step so the user can see
 # what each layout looks like (paired with the template's registry description).  Every offered key —
-# main-vertical, even-horizontal AND the experimental lead-left-ide — has a sketch, so no option ever
-# renders a blank preview.
+# main-vertical, even-horizontal and pages — has a sketch, so no option ever renders a blank preview.
 # Each sketch is the real geometry the builder produces (layouts.py), tower included: the same picture
 # Studio's cockpit preview draws.
 _TEMPLATE_SKETCHES = {
@@ -69,21 +64,13 @@ _TEMPLATE_SKETCHES = {
               "├──────┴─────┴─────┤\n"
               "│      TOWER       │\n"
               "└──────────────────┘ six to a page"),
-    # experimental: agents stacked on the left, the files-IDE pane (tower | explorer | editor) on the right.
-    "lead-left-ide": ("┌──────┬─────┬─────┬──────┐\n"
-                      "│ LEAD │     │     │      │\n"
-                      "├──────┤TOWER│EXPL │ EDIT │\n"
-                      "│  ◧   │     │     │      │\n"
-                      "├──────┤     │     │      │\n"
-                      "│  ◧   │     │     │      │\n"
-                      "└──────┴─────┴─────┴──────┘"),
 }
 
 
 def _template_preview(key: str) -> str:
     """Item #6: the inline Layout-step preview for a template — its ASCII sketch plus the registry
     description — so the Layout step shows what the selected template looks like.  Returns a NON-empty
-    preview for every offered key (main-vertical, even-horizontal, lead-left-ide); unknown keys -> ""."""
+    preview for every offered key (main-vertical, even-horizontal, pages); unknown keys -> ""."""
     t = templates.get(key)
     desc = t.desc if t else ""
     sketch = _TEMPLATE_SKETCHES.get(key, "")
@@ -140,8 +127,8 @@ _MODELS = {
 }
 
 # Quick-launch presets for the native psmux add-workspace menu (Ctrl-b A -> display-menu).  Every
-# layout is a templates-registry key (main-vertical / even-horizontal / lead-left-ide) so the native
-# menu can't drift from the wizard's grouped picker.  Fields: (menu label, hotkey, provider, count,
+# layout is a templates-registry key (main-vertical / even-horizontal) so the native
+# menu can't drift from the wizard's picker.  Fields: (menu label, hotkey, provider, count,
 # template key, model, effort).
 _MENU_PRESETS = [
     ("Claude - Lead Left", "c", "claude", "1", "main-vertical", "", "high"),
@@ -152,7 +139,6 @@ _MENU_PRESETS = [
     ("Claude - Side by Side", "s", "claude", "2", "even-horizontal", "", "high"),
     ("Codex - Side by Side", "X", "codex", "2", "even-horizontal", "gpt-6.1-sol", "high"),
     ("OpenCode Zen - Side by Side", "O", "opencode", "2", "even-horizontal", "opencode/big-pickle", ""),
-    ("Claude - Lead Left + Files IDE", "i", "claude", "2", "lead-left-ide", "", "high"),
 ]
 
 _CYAN = "\033[38;5;45m"
@@ -378,21 +364,12 @@ class AddWorkspaceApp(App):
                                     eff_rs.border_title = "Thinking"
                                     for e in _MODELS["claude"][0][2]:
                                         yield RadioButton(e, value=(e == "high"))
-                # --- Step 2: layout — ONE grouped picker over the templates registry (Normal /
-                #     Experimental), not two duplicate modes.  Each group is a headed RadioSet; the
-                #     selected radio's registry key is the template.  The shared preview below is a
-                #     DIRECT child of the step (never inside a box that hides), so it refreshes for
-                #     EVERY option incl. the experimental one (fixes the old empty-preview bug). ---
+                # --- Step 2: layout — ONE list over the templates registry ---
                 with Vertical(id="step2"):
                     yield Label("Layout")
-                    with RadioSet(id="tmpl_normal") as normal_rs:
-                        normal_rs.border_title = "Normal"
-                        for i, t in enumerate(_NORMAL_TEMPLATES):
-                            yield RadioButton(t.label, value=(i == 0))       # default = first Normal
-                    with RadioSet(id="tmpl_experimental") as exp_rs:
-                        exp_rs.border_title = "Experimental"
-                        for t in _EXPERIMENTAL_TEMPLATES:
-                            yield RadioButton(t.label, value=False)          # unpressed until chosen
+                    with RadioSet(id="tmpl"):
+                        for i, t in enumerate(_TEMPLATES):
+                            yield RadioButton(t.label, value=(i == 0))
                     yield Label(_template_preview(_DEFAULT_TEMPLATE_KEY), id="template_preview")
                 # --- Step 3: confirm (the Create button lives in the docked nav so it's always shown) ---
                 with Vertical(id="step3"):
@@ -476,7 +453,7 @@ class AddWorkspaceApp(App):
         self._focus_step(step)
 
     def _focus_step(self, step: int) -> None:
-        target = {0: "#folder", 1: "#count", 2: "#tmpl_normal", 3: "#create"}[step]
+        target = {0: "#folder", 1: "#count", 2: "#tmpl", 3: "#create"}[step]
         try:
             self.query_one(target).focus()
         except Exception:
@@ -514,10 +491,7 @@ class AddWorkspaceApp(App):
             await self._repopulate_model(int(rid[3:]))      # CLI changed -> rebuild model + effort
         elif rid.startswith("model"):
             await self._repopulate_effort(int(rid[5:]))     # model changed -> new effort options
-        elif rid in ("tmpl_normal", "tmpl_experimental"):
-            # grouped picker: a RadioSet won't deselect in place, so clear the OTHER group to keep the
-            # choice global-single, then refresh the shared preview from the selected key.
-            self._clear_template_group("tmpl_experimental" if rid == "tmpl_normal" else "tmpl_normal")
+        elif rid == "tmpl":
             self._sync_template_preview()
 
     async def on_select_changed(self, event: Select.Changed) -> None:
@@ -595,23 +569,6 @@ class AddWorkspaceApp(App):
         btn = rs.pressed_button
         return str(btn.label) if btn is not None else ""
 
-    def _clear_template_group(self, rid: str) -> None:
-        """Clear a template group's selection so the Normal/Experimental picker stays a SINGLE global
-        choice.  A Textual RadioSet re-presses a button toggled off, so we suppress that Changed and
-        drop the set's pressed/selected state directly (it starts life zero-pressed; this returns it
-        there)."""
-        try:
-            rs = self.query_one(f"#{rid}", RadioSet)
-        except Exception:
-            return
-        btn = rs.pressed_button
-        if btn is None:
-            return
-        with rs.prevent(RadioButton.Changed):
-            btn.value = False
-        rs._pressed_button = None
-        rs._selected = None
-
     def _sync_template_preview(self) -> None:
         """Item #6 / Bug B: refresh the shared Layout-step preview (ASCII sketch + registry description)
         from the currently-selected template key (via `_layout()`)."""
@@ -629,18 +586,12 @@ class AddWorkspaceApp(App):
         return int(_COUNTS[idx]) if 0 <= idx < len(_COUNTS) else 1
 
     def _layout(self) -> str:
-        """The selected template key from the grouped Normal/Experimental picker.  Exactly one group is
-        ever pressed (the other is cleared on change), so the first pressed group wins; falls back to
-        the default key when nothing is pressed yet."""
-        for rid, group in (("tmpl_normal", _NORMAL_TEMPLATES),
-                           ("tmpl_experimental", _EXPERIMENTAL_TEMPLATES)):
-            try:
-                idx = self.query_one(f"#{rid}", RadioSet).pressed_index
-            except Exception:
-                continue
-            if 0 <= idx < len(group):
-                return group[idx].key
-        return _DEFAULT_TEMPLATE_KEY
+        """The selected template key from the Layout picker."""
+        try:
+            idx = self.query_one("#tmpl", RadioSet).pressed_index
+        except Exception:
+            return _DEFAULT_TEMPLATE_KEY
+        return _TEMPLATES[idx].key if 0 <= idx < len(_TEMPLATES) else _DEFAULT_TEMPLATE_KEY
 
     def _collect(self):
         """Gather (folder, name, count, providers, models, efforts, layout) from the widgets — every

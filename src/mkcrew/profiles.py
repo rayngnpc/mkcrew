@@ -3,11 +3,18 @@
 A profile stores {name, count, layout, providers}; recency = file mtime."""
 import json
 import re
-from . import config
+from . import config, templates
 
 
 def _slug(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]+", "-", name).strip("-").lower() or "profile"
+
+
+def _resolve_profile(data: dict) -> dict:
+    if isinstance(data, dict) and "layout" in data:
+        data = dict(data)
+        data["layout"] = templates.resolve(data["layout"])
+    return data
 
 
 def save(name: str, data: dict) -> None:
@@ -17,7 +24,7 @@ def save(name: str, data: dict) -> None:
 
 def load(name: str) -> dict:
     p = config.profiles_dir() / f"{_slug(name)}.json"
-    return json.loads(p.read_text(encoding="utf-8"))
+    return _resolve_profile(json.loads(p.read_text(encoding="utf-8")))
 
 
 def list_profiles() -> list:
@@ -26,7 +33,7 @@ def list_profiles() -> list:
     out = []
     for f in files:
         try:
-            out.append(json.loads(f.read_text(encoding="utf-8")))
+            out.append(_resolve_profile(json.loads(f.read_text(encoding="utf-8"))))
         except (json.JSONDecodeError, OSError):
             continue
     return out

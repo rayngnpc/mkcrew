@@ -31,6 +31,27 @@ def test_frozen_add_workspace_launcher_uses_busybox_token(monkeypatch, tmp_path)
     assert r'@"C:\x\MKCREW.exe" add-workspace %*' in text
 
 
+def test_peek_launcher_dispatches_peek(monkeypatch, tmp_path):
+    import sys
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    project = tmp_path / "project with spaces"
+    launcher = frozen.peek_launcher(project)
+    content = (tmp_path / "mkcrew" / "bin" / "peek.cmd").read_bytes()
+    assert launcher.endswith("peek.cmd")
+    assert content == f'@"{sys.executable}" -m mkcrew.peek "{project.resolve()}"\r\n'.encode()
+
+
+def test_frozen_peek_launcher_uses_busybox_token(monkeypatch, tmp_path):
+    import sys
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", r"C:\x\MKCREW.exe", raising=False)
+    project = tmp_path / "project with spaces"
+    frozen.peek_launcher(project)
+    content = (tmp_path / "mkcrew" / "bin" / "peek.cmd").read_bytes()
+    assert content == f'@"C:\\x\\MKCREW.exe" peek "{project.resolve()}"\r\n'.encode()
+
+
 def test_frozen_branches_reinvoke_the_single_exe(monkeypatch):
     """When frozen, every internal launch command re-invokes the single MKCREW.exe (sys.executable)
     instead of a separate mk.exe / `python -m` — _run.py's argv dispatch handles the token. This is

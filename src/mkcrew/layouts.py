@@ -35,10 +35,10 @@ def _label(a) -> str:
 # to this via _status_right when the workspace is named, so a user in the terminal can see WHICH named
 # workspace they're in. Keep the `Esc:unstick` hint here (the copy-mode escape hatch, see apply_chrome).
 _STATUS_RIGHT = ("#[fg=colour39,bold]* core: live #[fg=colour244]| Ctrl-b "
-                 "#[fg=colour215]a#[fg=colour244]:add-ws #[fg=colour215]n#[fg=colour244]:switch "
+                 "#[fg=colour215]a#[fg=colour244]:add-ws #[fg=colour215]f#[fg=colour244]:peek #[fg=colour215]n#[fg=colour244]:switch "
                  "#[fg=colour215]x#[fg=colour244]:close #[fg=colour215]Esc#[fg=colour244]:unstick ")
-_STATUS_RIGHT_LEN = "130"          # fits the fixed hint string (no name badge)
-_STATUS_RIGHT_LEN_NAMED = "170"    # + room for the prepended "⬢ <workspace> · " badge
+_STATUS_RIGHT_LEN = "138"          # fits the fixed hint string (no name badge)
+_STATUS_RIGHT_LEN_NAMED = "178"    # + room for the prepended "⬢ <workspace> · " badge
 
 
 def _status_right(name=None) -> str:
@@ -82,7 +82,7 @@ _CHROME = [
 ]
 
 
-def apply_chrome(mux, name=None) -> None:
+def apply_chrome(mux, name=None, project=None) -> None:
     """Apply MKCREW cockpit branding/chrome (global psmux options).
 
     `name` is the workspace's human name (from .mkcrew/workspace.json). When set, a workspace-name
@@ -105,6 +105,9 @@ def apply_chrome(mux, name=None) -> None:
     launcher = frozen.add_workspace_launcher()
     for _key in ("a", "A"):                                  # bigger popup (92% x 90%) so the wider
         mux.bind_key(_key, "display-popup", "-E", "-w", "92%", "-h", "90%", launcher)  # per-agent wizard + full model names fit
+    peek = frozen.peek_launcher(project)
+    for _key in ("f", "F"):
+        mux.bind_key(_key, "display-popup", "-E", "-w", "80%", "-h", "80%", peek)
     for _key in ("x", "X"):                          # Ctrl-b x -> close the current workspace (confirm y/n)
         mux.bind_key(_key, "confirm-before", "kill-window")
     # Ctrl-b Escape -> UNSTICK: force-exit copy-mode on the active pane so keystrokes reach the app again.
@@ -149,81 +152,12 @@ def _main_vertical_layout(w: int, h: int, main_id: str, core_id: str, worker_ids
     return f"{_layout_csum(g)},{g}"
 
 
-_LEAD_WEIGHT = 2.0   # in LEAD-LEFT, the lead pane is ~this many workers tall (big, but workers stay readable)
-
-
-def _main_vertical_with_files(w: int, h: int, main_id: str, worker_ids: list, files_id: str) -> str:
-    """psmux/tmux layout string for LEAD-LEFT *with* the files-IDE: lead big top-left, the workers stacked
-    under it down the left column, and the 3-column files-IDE (core | explorer | editor) as a prominent
-    FULL-HEIGHT column on the RIGHT (~44%). There is NO separate core pane -- the files-IDE already shows
-    the live core on its left, so a second one would be a duplicate. Pane ids are the NUMERIC part of '%N';
-    the cell order is lead -> workers -> files, which the caller MUST also use as the pane CREATION order
-    (select-layout fills cells by pane order and ignores the ids written in the string). Handles 1-4 workers
-    cleanly: the left-column rows always sum to h, so the geometry stays valid at any agent count/screen."""
-    rw = max(24, round(w * 0.44)); lw = w - rw - 1; rx = lw + 1      # files = full-height right column (~44%)
-    n = len(worker_ids)
-    if n == 0:                                                       # just the lead fills the left column
-        left = f"{lw}x{h},0,0,{main_id}"
-    else:
-        body = h - n                                                # rows for panes (n separators between them)
-        # Weighted split: the lead stays BIGGER than a worker (~_LEAD_WEIGHT workers tall) WITHOUT hogging a
-        # full half -- so 3-4 stacked workers keep readable sizes instead of being squeezed to a few rows.
-        # (The old "lead = half the column" left each worker ~1/6 of the height -> the manual-resize problem.)
-        main_h = max(6, round(body * _LEAD_WEIGHT / (_LEAD_WEIGHT + n)))
-        if body - main_h < n:                                       # guard: leave >=1 row per stacked worker
-            main_h = max(1, body - n)
-        base, extra = divmod(body - main_h, n)                      # split the rest evenly among the workers
-        cells, y = [f"{lw}x{main_h},0,0,{main_id}"], main_h + 1
-        for i, wid in enumerate(worker_ids):
-            wh = base + (1 if i < extra else 0)
-            cells.append(f"{lw}x{wh},0,{y},{wid}"); y += wh + 1
-        left = f"{lw}x{h},0,0[{','.join(cells)}]"
-    files = f"{rw}x{h},{rx},0,{files_id}"                            # files-IDE: full-height right column
-    g = f"{w}x{h},0,0{{{left},{files}}}"
-    return f"{_layout_csum(g)},{g}"
-
-
-def _sidebyside_N_layout(w: int, h: int, lead_id: str, worker_ids: list, files_id: str) -> str:
-    """psmux/tmux layout string for SIDE-BY-SIDE (even-horizontal) *with* the files-IDE: the agents fill a
-    LEFT region as side-by-side columns -- the lead its own FULL-HEIGHT column, the workers in the column
-    beside it -- and the 3-column files-IDE (core | explorer | editor) is a prominent FULL-HEIGHT column on
-    the RIGHT (~42%). There is NO separate core pane -- the files-IDE already shows the live core on its
-    left, so a second one would duplicate it. At 2 agents this reads as lead | worker | files (three
-    columns); at 3-4 the extra workers STACK in the workers column (staying full width) so none get the
-    unreadably-thin slivers a bare even-horizontal preset would give. Pane ids are the NUMERIC part of '%N';
-    the cell order is lead -> workers -> files, which the caller MUST also use as the pane CREATION order
-    (select-layout fills cells by pane order and ignores the ids in the string). The left-region cols/rows
-    always sum to w/h, so the geometry stays valid at any agent count/screen."""
-    rw = max(24, round(w * 0.42)); lw = w - rw - 1; rx = lw + 1      # files = full-height right column (~42%)
-    n = len(worker_ids)
-    if n == 0:                                                       # just the lead fills the left region
-        left = f"{lw}x{h},0,0,{lead_id}"
-    else:
-        lcw = lw - 1 - (lw - 1) // 2; wcw = (lw - 1) // 2; wx = lcw + 1   # lead | workers cols (1-col gap), lead bigger
-        lead_cell = f"{lcw}x{h},0,0,{lead_id}"                       # lead: full-height left column
-        if n == 1:                                                  # single worker -> its own full-height column
-            workers_col = f"{wcw}x{h},{wx},0,{worker_ids[0]}"       #   -> lead | worker | files
-        else:                                                       # 2-3 workers -> stacked rows in the workers column
-            avail = h - (n - 1); hs = [avail // n] * n              # row heights sum to h (n-1 separators)
-            for i in range(avail - sum(hs)):
-                hs[i] += 1
-            cells, y = [], 0
-            for wid, wh in zip(worker_ids, hs):
-                cells.append(f"{wcw}x{wh},{wx},{y},{wid}"); y += wh + 1
-            workers_col = f"{wcw}x{h},{wx},0[{','.join(cells)}]"
-        left = f"{lw}x{h},0,0{{{lead_cell},{workers_col}}}"         # lead | workers (side by side)
-    files = f"{rw}x{h},{rx},0,{files_id}"                           # files-IDE: full-height right column
-    g = f"{w}x{h},0,0{{{left},{files}}}"
-    return f"{_layout_csum(g)},{g}"
-
-
 def _tiled_layout(w: int, h: int, pane_ids: list) -> str:
     """psmux/tmux layout string for the GRID template: an even row-major grid of ALL panes (agents + the
-    files-IDE -- one equal cell each). Used by `mk add --template tiled` so the grid is a DETERMINISTIC,
+    core -- one equal cell each). Used by `mk add --template tiled` so the grid is a DETERMINISTIC,
     valid layout string (one cell per pane, rows/cols computed from the count) instead of leaning on psmux's
     bare 'tiled' preset. Cells are filled in pane CREATION order, so the caller MUST create panes in the same
-    order as `pane_ids` (lead -> workers -> files). Ids are the NUMERIC part of '%N'. Mirrors
-    `_grid_strip_layout` minus the pinned core strip (the files-IDE already carries the core)."""
+    order as `pane_ids` (lead -> workers -> core). Ids are the NUMERIC part of '%N'."""
     k = len(pane_ids)
     cols = max(1, math.ceil(math.sqrt(k)))
     rows = max(1, math.ceil(k / cols))
@@ -301,12 +235,11 @@ def tiled(mux, team, project, register, session) -> dict:
 
 
 def main_vertical(mux, team, project, register, session) -> dict:
-    """NORMAL LEAD-LEFT (core-only): lead big top-left, a live core status pane small bottom-left UNDER
-    it, and the workers stacked down the right column. NO files-IDE pane. Custom geometry via
+    """LEAD-LEFT: lead big top-left, a live core status pane small bottom-left UNDER
+    it, and the workers stacked down the right column. Custom geometry via
     _main_vertical_layout (the bare psmux 'main-vertical' preset would dump the core on the right with the
     workers). select-layout fills cells by pane ORDER, and _main_vertical_layout's cell order is
-    lead -> core -> workers, so we CREATE panes in exactly that order. (The files-IDE LEAD-LEFT variant is
-    the experimental 'lead-left-ide' builder.)"""
+    lead -> core -> workers, so we CREATE panes in exactly that order."""
     a0 = team[0]
     main_id = mux.new_session(session, a0["role"], _launch(a0, project))   # cell 1: lead (top-left)
     panes = {a0["role"]: main_id}
@@ -330,50 +263,15 @@ def main_vertical(mux, team, project, register, session) -> dict:
     return panes
 
 
-def lead_left_ide(mux, team, project, register, session) -> dict:
-    """EXPERIMENTAL LEAD-LEFT + files-IDE: lead big top-left, the workers stacked under it down the left
-    column, and the 3-column files-IDE (core | explorer | editor) as a prominent FULL-HEIGHT column on the
-    right. No separate core pane -- the files-IDE already shows the live core on its left, so a second one
-    is a duplicate. Custom geometry via a layout string (the bare psmux 'main-vertical' preset would cram
-    the files-IDE into a tiny right-stack cell). select-layout fills cells by pane ORDER, so we CREATE
-    panes lead -> workers -> files to match _main_vertical_with_files's cell order."""
-    panes, worker_ids, main_id = {}, [], None
-    for i, a in enumerate(team):
-        role = a["role"]
-        if i == 0:
-            pid = mux.new_session(session, role, _launch(a, project)); main_id = pid
-        else:
-            pid = mux.split_window(f"{session}:0", _launch(a, project))
-            mux.select_layout(session, "tiled")             # rebalance so the next split has room
-            worker_ids.append(pid)
-        panes[role] = pid
-        register(role, pid)
-        mux.set_pane_title(pid, _label(a))
-    files_id = mux.split_window(f"{session}:0", _files_view_cmd(project))   # the files-IDE (last cell, right)
-    mux.select_layout(session, "tiled")
-    mux.set_pane_title(files_id, "files - core | explorer | editor")
-    w, h = mux.window_size(session)
-    mux.select_layout(session, _main_vertical_with_files(w, h, main_id[1:],
-                                                        [p[1:] for p in worker_ids], files_id[1:]))
-    mux.select_pane(main_id)                                # land the user in the lead
-    return panes
-
-
 def main_horizontal(mux, team, project, register, session) -> dict:
     """One window: lead dominant on top, the rest in a row below (psmux main-horizontal)."""
     return _single_window(mux, team, project, register, session, "main-horizontal")
 
 
-def _files_view_cmd(project) -> list:
-    """The Files pane command — the IDE-style file explorer (full path for psmux + the project dir)."""
-    from . import frozen
-    return frozen.files_view_cmd(project)
-
-
 def _sidebyside_core_layout(w: int, h: int, agent_ids: list, core_id: str) -> str:
-    """psmux/tmux layout string for NORMAL Side-by-side (even-horizontal), core-only: the agents fill a
+    """psmux/tmux layout string for Side-by-side (even-horizontal): the agents fill a
     single ROW of equal-width side-by-side columns on top, and the live core is a FULL-WIDTH status strip
-    pinned to the BOTTOM. NO files pane. Ids are the NUMERIC part of '%N'; the cell order is agents (row)
+    pinned to the BOTTOM. Ids are the NUMERIC part of '%N'; the cell order is agents (row)
     then the core strip, so the caller MUST create panes agents-first, core-last (select-layout fills cells
     by pane order and ignores the ids in the string). Scales to any agent count; tmux re-scales on resize."""
     cs = min(12, max(4, h // 5))                          # core strip height (bottom, full width)
@@ -392,8 +290,8 @@ def _sidebyside_core_layout(w: int, h: int, agent_ids: list, core_id: str) -> st
 
 
 def even_horizontal(mux, team, project, register, session) -> dict:
-    """NORMAL Side-by-side (core-only): the agents in a single ROW of side-by-side columns, with the live
-    core as a full-width status strip pinned to the bottom. NO files pane. Applied at ALL agent counts via
+    """Side-by-side: the agents in a single ROW of side-by-side columns, with the live
+    core as a full-width status strip pinned to the bottom. Applied at ALL agent counts via
     a custom geometry string (the bare psmux 'even-horizontal' preset gives no core strip). select-layout
     fills cells by pane ORDER, and _sidebyside_core_layout's cell order is agents -> core, so we CREATE the
     agents first and the core LAST."""
@@ -491,14 +389,18 @@ def pages(mux, team, project, register, session) -> dict:
 
 
 LAYOUTS = {"tiled": tiled, "hub": hub, "main-vertical": main_vertical, "main-horizontal": main_horizontal,
-           "even-horizontal": even_horizontal, "even-vertical": even_vertical, "lead-left-ide": lead_left_ide,
+           "even-horizontal": even_horizontal, "even-vertical": even_vertical,
            "pages": pages}
 
 
 def get(name: str):
-    """Return the builder for `name`, falling back to tiled (with a warning) if unknown."""
-    builder = LAYOUTS.get(name)
+    """Return the builder for `name`, resolving retired keys or falling back to tiled if unknown."""
+    from . import templates
+    resolved = templates.resolve(name)
+    if resolved != name:
+        print(f"note: layout '{name}' was retired; using LEAD LEFT (Ctrl-b f opens the files peek)")
+    builder = LAYOUTS.get(resolved)
     if builder is None:
-        print(f"warning: unknown layout {name!r}, using 'tiled'")
+        print(f"warning: unknown layout {resolved!r}, using 'tiled'")
         return tiled
     return builder

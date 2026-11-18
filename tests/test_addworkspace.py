@@ -124,8 +124,8 @@ def test_wizard_keyboard_flow_builds_per_agent_command(tmp_path):
                 await pilot.pause()
                 assert app.current_step == 2
 
-                # Layout step: keep the default template (Normal group, first option = main-vertical).
-                assert app.query_one("#tmpl_normal", RadioSet).pressed_index == 0
+                # Layout step: keep the default template (first option = main-vertical).
+                assert app.query_one("#tmpl", RadioSet).pressed_index == 0
                 assert app._layout() == "main-vertical"
 
                 # Step 2 -> 3, then CREATE via a REAL mouse click on the button.
@@ -142,7 +142,7 @@ def test_wizard_keyboard_flow_builds_per_agent_command(tmp_path):
                 "--providers", "codex,claude",                 # agent0 = codex, agent1 = claude default
                 "--models", "gpt-6.1-sol,claude-opus-5-5",     # agent0 = GPT-6.1-Sol, agent1 = Claude Opus 5.5
                 "--efforts", "high,high",                      # per-agent: codex 'high' + claude 'high'
-                "--template", "main-vertical"]                 # default template (Normal group, index 0)
+                "--template", "main-vertical"]                 # default template (index 0)
     assert captured["pending"] == expected         # the argv the app built from the keyboard+click path
     # ...and what it actually launched: the --run-and-report WATCHER wrapping that same mk argv, so a
     # backend refusal/failure surfaces as a display-message toast instead of dying invisibly.
@@ -491,7 +491,7 @@ def test_cmd_add_launches_team_in_layout(monkeypatch, tmp_path):
     assert len(agent_splits) == 2                                       # worker1 + worker2 (3 agents total)
     assert all(s[1][2] == "codex" and s[1][3] == "max" and s[1][4] == "gpt-5.5" for s in agent_splits)
     assert all(s[1][1].startswith(f"{tmp_path.name}.") for s in agent_splits)  # roles workspace-prefixed
-    assert sum(1 for c in calls if c[0] == "split") == 3               # 2 more agents + files (no core pane)
+    assert sum(1 for c in calls if c[0] == "split") == 3               # 2 more agents + core pane
     assert ("layout", "tiled") in calls                                # chosen layout applied
 
 
@@ -580,17 +580,14 @@ def test_addworkspace_picker_removes_gemini_and_uses_template_labels():
     assert _MODELS["codex"][0][2][-1] == "ultra"                       # GPT-6.1-Sol tops out at 'ultra'
 
 
-def test_template_picker_groups_registry_normal_and_experimental():
-    """The Layout step groups the FROZEN templates registry: 'Normal' = add-capable core layouts
-    (main-vertical / even-horizontal / pages), 'Experimental' = the files-IDE layout (lead-left-ide).
-    Pages IS offered (parity with Studio; at add scale it's one grid+core-strip page tab)."""
-    from mkcrew.addworkspace import _NORMAL_TEMPLATES, _EXPERIMENTAL_TEMPLATES, _DEFAULT_TEMPLATE_KEY
-    assert [t.key for t in _NORMAL_TEMPLATES] == ["main-vertical", "even-horizontal", "pages"]  # in order
-    assert [t.key for t in _EXPERIMENTAL_TEMPLATES] == ["lead-left-ide"]                # one experimental
-    assert _DEFAULT_TEMPLATE_KEY == "main-vertical"                    # default = first Normal option
-    offered = {t.key for t in _NORMAL_TEMPLATES + _EXPERIMENTAL_TEMPLATES}
-    assert offered == {t.key for t in templates.wizard_templates()}   # exactly the add-capable set
-    assert "pages" in offered                                          # parity with Studio
+def test_template_picker_lists_registry_in_single_group():
+    """The Layout step lists the FROZEN templates registry as ONE list with no group headings:
+    main-vertical / even-horizontal / pages."""
+    from mkcrew.addworkspace import _TEMPLATES, _DEFAULT_TEMPLATE_KEY
+    assert [t.key for t in _TEMPLATES] == ["main-vertical", "even-horizontal", "pages"]  # in order
+    assert _DEFAULT_TEMPLATE_KEY == "main-vertical"
+    assert {t.key for t in _TEMPLATES} == {t.key for t in templates.wizard_templates()}  # exactly the add-capable set
+    assert "pages" in {t.key for t in _TEMPLATES}                      # parity with Studio
 
 
 def test_codex_roster_matches_codex_picker_with_effort_lists():
@@ -935,9 +932,9 @@ def test_wizard_model_and_effort_radios_are_one_per_line(tmp_path):
 
 def test_template_preview_surfaces_sketch_and_description():
     """Item #6: the layout-step preview surfaces BOTH the registry description AND a tiny ASCII sketch,
-    for EVERY offered template — main-vertical, even-horizontal AND the experimental lead-left-ide."""
+    for EVERY offered template — main-vertical, even-horizontal and pages."""
     offered = [t.key for t in templates.wizard_templates()]
-    assert "lead-left-ide" in offered                     # the experimental option is covered too
+    assert offered == ["main-vertical", "even-horizontal", "pages"]
     for t in templates.wizard_templates():
         prev = _template_preview(t.key)
         assert t.desc in prev                             # the registry description is surfaced
@@ -946,34 +943,26 @@ def test_template_preview_surfaces_sketch_and_description():
 
 
 def test_wizard_layout_step_shows_and_updates_template_preview(tmp_path):
-    """Item #6 / Bug B: the Layout step renders the selected template's preview, and switching the
-    selection — WITHIN the Normal group AND across to the Experimental group — updates the shared
-    preview.  The experimental option must produce a NON-EMPTY preview (the old empty-preview bug)."""
+    """Item #6 / Bug B: the Layout step renders ONE list of layouts (no group headings) and
+    switching the selection updates the shared preview."""
     async def go():
         app = AddWorkspaceApp(str(tmp_path))
         async with app.run_test(size=(100, 40)) as pilot:
             await pilot.pause()
             app.current_step = 2
             await pilot.pause()
+            rs = app.query_one("#tmpl", RadioSet)
+            assert not rs.border_title                    # one list, no group heading
+            assert len(list(app.query("#step2 RadioSet"))) == 1
             prev = str(app.query_one("#template_preview", Label).content)
             assert "Lead top-left" in prev                # default (main-vertical) registry description
-            # switch WITHIN the Normal group -> even-horizontal
-            app.query_one("#tmpl_normal", RadioSet).focus()
+            # switch -> even-horizontal
+            rs.focus()
             await pilot.press("down", "enter")
             await pilot.pause()
             prev2 = str(app.query_one("#template_preview", Label).content)
             assert "side-by-side columns" in prev2        # even-horizontal registry description
             assert app._layout() == "even-horizontal"
-            # switch ACROSS to the Experimental group -> lead-left-ide (preview must be NON-EMPTY)
-            app.query_one("#tmpl_experimental", RadioSet).focus()
-            await pilot.press("enter")                    # cursor starts on the single option
-            await pilot.pause()
-            prev3 = str(app.query_one("#template_preview", Label).content)
-            assert prev3.strip()                          # NON-empty preview (empty-preview bug fixed)
-            assert "files IDE" in prev3                   # lead-left-ide registry description
-            assert app._layout() == "lead-left-ide"
-            # the pick is global-single: choosing Experimental cleared the Normal group
-            assert app.query_one("#tmpl_normal", RadioSet).pressed_index == -1
     asyncio.run(go())
 
 

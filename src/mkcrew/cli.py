@@ -402,7 +402,7 @@ def cmd_start(argv):
                                               "provider": role_provider.get(role, "claude")}),
         SESSION,
     )
-    layouts.apply_chrome(mux, name)                          # workspace-name badge in the top bar (all windows)
+    layouts.apply_chrome(mux, name, project)                          # workspace-name badge in the top bar (all windows)
     if name and hasattr(mux, "rename_window"):               # + label the primary window tab with the workspace name
         mux.rename_window(f"{SESSION}:0", name)
 
@@ -810,8 +810,16 @@ def cmd_studio(argv):
     studio.serve(project_dir=_project_dir())
 
 
+def cmd_peek(argv):
+    """Open the read-only files peek (`mk peek [dir]`)."""
+    from . import peek
+    rc = peek.main(argv)
+    if rc:
+        raise SystemExit(rc)
+
+
 # Plain psmux presets `mk add` still accepts alongside the registry's wizard templates (main-vertical /
-# even-horizontal / lead-left-ide). These carry no files-IDE, so they build a core pane like the normals.
+# even-horizontal / pages).
 _WS_EXTRA_LAYOUTS = ("tiled", "even-vertical", "main-horizontal")
 
 
@@ -822,7 +830,7 @@ def _valid_ws_templates() -> set:
 def cmd_add(argv):
     """`mk add <dir> [--name N] [--agents 1-6] [--provider P] [--model M] [--template LAYOUT]`: add a workspace as
     a new window (tab) in the running cockpit.  Spawns `--agents` agents (each running `--provider`'s
-    CLI), a core pane, and a files pane, arranged by the chosen built-in psmux layout.
+    CLI) and a core pane, arranged by the chosen built-in psmux layout.
 
     ponytail: the agents are INDEPENDENT (each a usable provider CLI in <dir>) — no `mk ask` crew
     routing between them yet (that's the daemon-prefix engine).  Roles are workspace-prefixed
@@ -891,25 +899,20 @@ def cmd_add(argv):
     teamconfig.set_name(project, name)                                     # FIX #4: persist the workspace identity
     for a in team:
         a["role"] = f"{name}.{a['role']}"                                  # unique per workspace
-    # Build the panes: the lead (a new window/tab), the workers, and ONE "extra" pane -- REBALANCING to
+    # Build the panes: the lead (a new window/tab), the workers, and ONE core pane -- REBALANCING to
     # 'tiled' after EVERY split so the next split always has room. Without this, psmux halves the active
     # pane on each split; a few splits in, the pane is too small to split, that split RAISES, and cmd_add
-    # aborts mid-build -> agents/files go missing and no final layout is applied (this is the #1/#10/#12
+    # aborts mid-build -> agents go missing and no final layout is applied (this is the #1/#10/#12
     # breakage, and why stacking 3-4 agents lost panes). The cockpit's own builders rebalance after each
     # split for exactly this reason; cmd_add matches.
     #
-    # The extra pane honors the registry's normal-vs-experimental split (templates.includes_files_ide):
-    #   - lead-left-ide (EXPERIMENTAL) -> a files-IDE pane (core | explorer | editor).
-    #   - every NORMAL/plain template  -> a live CORE status pane instead (no files-IDE).
-    # select-layout fills cells by pane CREATION order, so the extra pane is created at the position its
-    # layout string expects: main-vertical's core sits SECOND (its cells are lead, core, workers); every
-    # other template's extra pane is created LAST (files/core is the trailing cell).
-    files_ide = templates.includes_files_ide(layout)
+    # The core pane is created at the position its layout string expects: second for
+    # main-vertical, last for the other layouts. psmux appends splits to the window.
     a0 = team[0]
     pid = mux.new_window(SESSION, name, layouts._launch(a0, str(project)), cwd=str(project))  # first agent (lead)
     mux.set_pane_title(pid, f"{a0['role']} - {a0.get('provider', 'claude')}")
-    core_pid = files_pid = None
-    if layout == "main-vertical":                                          # core LEAD-LEFT: core pane is cell 2
+    core_pid = None
+    if layout == "main-vertical":                                          # LEAD-LEFT: core pane is cell 2
         core_pid = mux.split_window(win, frozen.core_view_cmd(str(project), "h"))  # wide/short strip -> 'h' side-by-side tables
         mux.select_layout(win, "tiled")
         mux.set_pane_title(core_pid, "core - control tower")
@@ -919,23 +922,16 @@ def cmd_add(argv):
         mux.select_layout(win, "tiled")                                    # rebalance so the next split has room
         mux.set_pane_title(p, f"{a['role']} - {a.get('provider', 'claude')}")
         worker_pids.append(p)
-    if files_ide:                                                          # EXPERIMENTAL: files-IDE pane, LAST cell
-        files_pid = mux.split_window(win, frozen.files_view_cmd(project))
-        mux.select_layout(win, "tiled")
-        mux.set_pane_title(files_pid, "files - core | explorer | editor")
-    elif layout != "main-vertical":                                        # NORMAL/plain: core pane, LAST cell
+    if layout != "main-vertical":                                          # core pane, LAST cell
         orient = "h" if layout in ("even-horizontal", "pages") else "v"    # wide/short strips render side-by-side
         core_pid = mux.split_window(win, frozen.core_view_cmd(str(project), orient))
         mux.select_layout(win, "tiled")
         mux.set_pane_title(core_pid, "core - control tower")
     w, h = mux.window_size(win)
-    if layout == "lead-left-ide":                                          # EXPERIMENTAL: files-IDE LEAD-LEFT
-        mux.select_layout(win, layouts._main_vertical_with_files(
-            w, h, pid[1:], [p[1:] for p in worker_pids], files_pid[1:]))
-    elif layout == "main-vertical":                                        # NORMAL LEAD-LEFT: lead + core + workers
+    if layout == "main-vertical":                                          # LEAD-LEFT: lead + core + workers
         mux.select_layout(win, layouts._main_vertical_layout(
             w, h, pid[1:], core_pid[1:], [p[1:] for p in worker_pids]))
-    elif layout == "even-horizontal":                                      # NORMAL SIDE-BY-SIDE: agent row + core strip
+    elif layout == "even-horizontal":                                      # SIDE-BY-SIDE: agent row + core strip
         mux.select_layout(win, layouts._sidebyside_core_layout(
             w, h, [pid[1:]] + [p[1:] for p in worker_pids], core_pid[1:]))
     elif layout == "pages":                                                # PAGES page: agent GRID + core strip
@@ -1104,7 +1100,7 @@ COMMANDS = {"init": cmd_init, "start": cmd_start, "attach": cmd_attach,
             "pend": cmd_pend, "trace": cmd_trace, "stats": cmd_stats, "repair": cmd_repair,
             "verify": cmd_verify, "resume": cmd_resume, "tui": cmd_tui,
             "layout": cmd_layout, "relayout": cmd_relayout, "studio": cmd_studio,
-            "mode": cmd_mode}
+            "peek": cmd_peek, "mode": cmd_mode}
 
 def main(argv=None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
@@ -1115,7 +1111,7 @@ def main(argv=None) -> int:
         from .coreview import status_main
         return status_main()
     if not argv or argv[0] not in COMMANDS:
-        print("usage: mk {init|start|open|workspaces|doctor|attach|kill|panic|add|pend|trace|stats|repair|verify|resume|tui|layout|relayout|studio|ask|status}")
+        print("usage: mk {init|start|open|workspaces|doctor|attach|kill|panic|add|pend|trace|stats|repair|verify|resume|tui|layout|relayout|studio|peek|mode|ask|status}")
         return 2
     COMMANDS[argv[0]](argv[1:])
     return 0

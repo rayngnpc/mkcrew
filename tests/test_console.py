@@ -22,3 +22,50 @@ def test_adaptive_font_shrinks_with_panes_and_clamps():
 def test_set_console_font_is_safe_and_returns_bool():
     """set_console_font never raises (best-effort); returns a bool (False off a real console host)."""
     assert isinstance(console.set_console_font(12), bool)
+
+
+def _fake_windll(monkeypatch, active_face_fn, set_ok=True):
+    calls = []
+
+    class _K32:
+        def GetStdHandle(self, n):
+            return 42
+
+        def SetCurrentConsoleFontEx(self, handle, max_win, info_ref):
+            face = info_ref._obj.FaceName
+            calls.append((handle, max_win, info_ref._obj.FontHeight, face))
+            return bool(set_ok)
+
+        def GetCurrentConsoleFontEx(self, handle, max_win, info_ref):
+            info2 = info_ref._obj
+            assert info2.cbSize > 0
+            info2.FaceName = active_face_fn(calls[-1][3])
+            return True
+
+    fake = type("W", (), {"kernel32": _K32()})()
+    monkeypatch.setattr(console.ctypes, "windll", fake, raising=False)
+    return calls
+
+
+def test_set_console_font_accepts_cascadia_on_first_try(monkeypatch):
+    calls = _fake_windll(monkeypatch, lambda req: req)
+    assert console.set_console_font(12) is True
+    assert [c[3] for c in calls] == ["Cascadia Mono"]
+    assert calls[0][2] == 12
+
+
+def test_set_console_font_falls_back_to_consolas_when_cascadia_rejected(monkeypatch):
+    calls = _fake_windll(monkeypatch, lambda req: "Consolas")
+    assert console.set_console_font(10) is True
+    assert [c[3] for c in calls] == ["Cascadia Mono", "Consolas"]
+
+
+def test_set_console_font_returns_false_when_set_fails(monkeypatch):
+    calls = _fake_windll(monkeypatch, lambda req: req, set_ok=False)
+    assert console.set_console_font(12) is False
+    assert [c[3] for c in calls] == ["Cascadia Mono", "Consolas"]
+
+
+def test_set_console_font_returns_false_without_windll(monkeypatch):
+    monkeypatch.delattr(console.ctypes, "windll", raising=False)
+    assert console.set_console_font(12) is False

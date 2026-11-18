@@ -221,9 +221,8 @@ _SIDE_BY_SIDE_MIN = 132       # below this a strip stacks TEAM over TASKS when t
 _GUTTER = " "                 # one blank column so text never touches the pane border
 
 
-def _team_rows(agents, roster, jobs=(), activity=None, now=None, short=False):
-    """[(role, provider, model, state, task)] in roster order (event order when there is no roster).
-    `short=True` is the narrow Files-IDE rail: '→worker2' instead of 'waiting→worker2', no ages."""
+def _team_rows(agents, roster, jobs=(), activity=None, now=None):
+    """[(role, provider, model, state, task)] in roster order (event order when there is no roster)."""
     now = time.time() if now is None else now
 
     def _st(role, info):
@@ -231,11 +230,10 @@ def _team_rows(agents, roster, jobs=(), activity=None, now=None, short=False):
         if state in ("idle", "", "-", None):                 # blocked asker is WAITING, never 'idle'
             to = _waiting_on(role, jobs)
             if to:
-                return f"→{to}" if short else f"waiting→{to}"   # wins over working/late-work below
-        if not short:
-            live = _activity_state(role, state, jobs, activity, now)
-            if live is not None:
-                return live
+                return f"waiting→{to}"                       # wins over working/late-work below
+        live = _activity_state(role, state, jobs, activity, now)
+        if live is not None:
+            return live
         return state or "idle"
 
     rows = []
@@ -398,20 +396,18 @@ def _jobs_block(jobs, recent, width=_DEFAULT_COLS, now=None, colhdr=True, names=
     return out
 
 
-# Cockpit keyboard cheatsheet — the REAL binds, not invented, GROUPED so a user can tell the two
-# contexts apart: the SAME physical key does different things under the Ctrl-b prefix vs. bare in the
-# Files pane (e.g. z, [, ], n, Esc). Sources — all verified against the code / `tmux list-keys`:
-#   • Cockpit (Ctrl-b …): a/A, x/X and Esc are REBOUND by layouts.apply_chrome (display-popup
-#     add-workspace; confirm-before kill-window; send-keys -X cancel to unstick copy-mode). n/d/z/o/[/c
-#     are genuinely useful DEFAULTS surfaced here (curated, NOT every default): n next-window, d
-#     detach-client, z resize-pane -Z (zoom/fullscreen a pane), o select-pane (arrows switch too),
-#     [ copy-mode (scrollback), c new-window.
-#   • Files pane: the bare keys from filesview.FilesApp.BINDINGS — z/[/] collapse panels; n/f/e/Ctrl-s/
-#     r/Esc/Ctrl-t drive the explorer + editor. The max/tower/files/close buttons mirror z/[/]/].
-# Edit these lists if the binds change.
+# Cockpit keyboard cheatsheet — the REAL binds, not invented. Sources — all verified against the code /
+# `tmux list-keys`:
+#   • Cockpit (Ctrl-b …): a/A, f/F, x/X and Esc are REBOUND by layouts.apply_chrome (display-popup
+#     add-workspace; display-popup files peek; confirm-before kill-window; send-keys -X cancel to
+#     unstick copy-mode). n/d/z/o/[/c are genuinely useful DEFAULTS surfaced here (curated, NOT every
+#     default): n next-window, d detach-client, z resize-pane -Z (zoom/fullscreen a pane), o
+#     select-pane (arrows switch too), [ copy-mode (scrollback), c new-window.
+# Edit this list if the binds change.
 _HOTKEYS = {
     "Cockpit (Ctrl-b …)": [
         ("a / A", "Add workspace"),    # apply_chrome: display-popup add-workspace
+        ("f", "Peek files"),           # apply_chrome: display-popup files peek
         ("n", "Switch ws"),            # default next-window
         ("x / X", "Close ws"),         # apply_chrome: confirm-before kill-window
         ("d", "Detach"),               # default detach-client
@@ -421,26 +417,14 @@ _HOTKEYS = {
         ("c", "New window"),           # default new-window
         ("Esc", "Unstick"),            # apply_chrome: send-keys -X cancel (exit copy-mode)
     ],
-    "Files pane": [
-        ("z", "Max editor"),           # filesview BINDINGS: toggle_maximize
-        ("[", "Tower"),                # filesview BINDINGS: toggle_core
-        ("]", "Explorer"),             # filesview BINDINGS: toggle_tree
-        ("n", "New file"),             # filesview BINDINGS: new_file
-        ("f", "New folder"),           # filesview BINDINGS: new_folder
-        ("e", "Edit"),                 # filesview BINDINGS: edit
-        ("Ctrl-s", "Save"),            # filesview BINDINGS: save (ctrl+s)
-        ("r", "Reload"),               # filesview BINDINGS: reload
-        ("Esc", "View"),               # filesview BINDINGS: view (also cancels a new-file entry)
-        ("Ctrl-t", "Tree"),            # filesview BINDINGS: focus_tree (ctrl+t)
-    ],
 }
 
 
-def _hotkeys_block(width=_DEFAULT_COLS, groups=None):
-    """HOTKEYS section: the cockpit's REAL keybinds, one group per context, each flowed into as many
-    'key action' columns as the pane is wide (newspaper order would hide the common keys at the
-    bottom, so it reads left to right). Static -- fixed chrome, not event-log state."""
-    names = list(_HOTKEYS) if groups is None else list(_HOTKEYS)[:groups]
+def _hotkeys_block(width=_DEFAULT_COLS):
+    """HOTKEYS section: the cockpit's REAL keybinds, flowed into as many 'key action' columns as the
+    pane is wide (newspaper order would hide the common keys at the bottom, so it reads left to
+    right). Static -- fixed chrome, not event-log state."""
+    names = list(_HOTKEYS)
     kw = max(len(k) for g in names for k, _ in _HOTKEYS[g])
     aw = max(len(a) for g in names for _, a in _HOTKEYS[g])
     per_row = max(1, (width - 3) // (kw + 1 + aw + 3))
@@ -452,42 +436,6 @@ def _hotkeys_block(width=_DEFAULT_COLS, groups=None):
             cells = [_cell(k, kw, _B) + " " + _cell(a, aw, _DIM) for k, a in keys[i:i + per_row]]
             out.append(f"{_GUTTER}  " + _fill(3).join(cells))
     return out
-
-
-def _compact_core(agents, jobs, recent, roster, width=30, title=None):
-    """Narrow tower for the Files IDE's left column.
-
-    The full tower flexes to a wide pane; inside `filesview` the column is narrow and FIXED, so this
-    renders a bounded frame in which every line is exactly `width + 4` visible columns (the caller
-    sizes the `#core` column to hold that so it never wraps — keep the two in sync)."""
-    outer = width + 4
-    rows = _team_rows(agents, roster, jobs, short=True)
-    c = _counts(rows)
-    alerts = f"{_RED}{c['alerts']} alert{'' if c['alerts'] == 1 else 's'}{_R}" if c["alerts"] else f"{_DIM}0 alerts{_R}"
-    out = [f"{_GUTTER}{_AZURE}{_MARK}{_R} {_B}{_one_line(title or 'MKCREW tower', width - 2)}{_R}",
-           f"{_GUTTER}{_TX}{c['agents']}{_R} {_DIM}agents{_R}  "
-           f"{_AMBER if c['active'] else _DIM}{c['active']} active{_R}  {alerts}",
-           "",
-           f"{_GUTTER}{_label('TEAM')}"]
-    if not rows:
-        out.append(f"{_GUTTER}  {_DIM}(none){_R}")
-    for role, cli, _m, state, _t in rows[:6]:
-        cli = _CLI_NAME.get(cli, cli)                        # the binary's name; the rail is 8 cells
-        out.append(f"{_GUTTER}{_light(state)} " + " ".join([
-            _cell(role, 9, _role_color(role)), _cell(cli, 8, _DIM), _cell(state, 10, _state_color(state))]))
-    if len(rows) > 6:
-        out.append(f"{_GUTTER}  {_DIM}+{len(rows) - 6} more{_R}")
-    out += ["", f"{_GUTTER}{_label('TASKS')}"]
-    visible = list(jobs)[-recent:][::-1]
-    if not visible:
-        out.append(f"{_GUTTER}  {_DIM}(no tasks yet){_R}")
-    for j in visible[:5]:
-        out.append(f"{_GUTTER}{_light(j.status)} " + " ".join([
-            _cell(j.id, 12, _DIM), _cell(j.to, 7, _TX), _cell(j.status, 10, _state_color(j.status))]))
-    out += ["", f"{_GUTTER}{_label('HOTKEYS')}"]
-    for line in ("n file   f folder", "e edit   ^s save", "^←/^→ scroll"):
-        out.append(f"{_GUTTER}  {_TX}{line}{_R}")
-    return "\n".join(_pad_line(line, outer) for line in out)
 
 
 def _arrange(head, team_rows, jobs, now, width, k, side, blank, colhdr, label, with_head):
@@ -511,7 +459,7 @@ _DENSITY = [(True, True, True, True), (False, True, True, True), (False, False, 
             (False, False, True, False), (False, False, False, False)]
 
 
-def render_core(agents, jobs, recent=5, roster=None, orient="v", compact=False, width=30,
+def render_core(agents, jobs, recent=5, roster=None, orient="v",
                 mode="standard", activity=None, now=None, title=None, cols=None, rows=None, keys=True):
     """Pure: (agents state, jobs[, roster]) -> the styled tower frame (ANSI text, no outer box).
 
@@ -520,12 +468,9 @@ def render_core(agents, jobs, recent=5, roster=None, orient="v", compact=False, 
     blank lines, then column headers, then labels, then older tasks, until it fits, so a short strip
     shows a complete (if terser) picture instead of the tail of a tall one. orient="h" marks a
     wide/short strip: TEAM and TASKS go SIDE BY SIDE when the strip is wide enough (or too short to
-    stack). `compact=True` renders the narrow rail for the Files IDE at inner `width` (outer
-    `width + 4`). `activity`/`now` feed the TEAM section's 'working <age>'/'late-work <age>' states
+    stack). `activity`/`now` feed the TEAM section's 'working <age>'/'late-work <age>' states
     (see _activity_state) -- both default to "no daemon activity data". `title` is the workspace
     name shown in the header; `keys=False` leaves the HOTKEYS cheatsheet out (`mk status`)."""
-    if compact:
-        return _compact_core(agents, jobs, recent, roster, width, title)
     now = time.time() if now is None else now
     jobs = list(jobs)
     W = max(24, cols or (_DEFAULT_COLS_WIDE if orient == "h" else _DEFAULT_COLS))
@@ -562,7 +507,7 @@ def render_core(agents, jobs, recent=5, roster=None, orient="v", compact=False, 
         if rows is None:
             frame = frame + [""] + _hotkeys_block(W)
         else:
-            block = [""] + _hotkeys_block(W, groups=1)       # a live pane only needs the cockpit keys
+            block = [""] + _hotkeys_block(W)
             if len(frame) + len(block) <= rows:
                 frame = frame + block
     return "\n".join(frame)

@@ -419,3 +419,14 @@ def test_build_team_provider_overlay_follows_the_planner_seat():
     (e.g. the 4th row assigned antigravity/agy becomes the agy planner in chief mode)."""
     team = teamconfig.build_team(4, providers=["claude", "claude", "codex", "antigravity"], mode="chief")
     assert team[3]["role"] == "planner" and team[3]["provider"] == "antigravity"
+
+
+def test_load_layout_returns_raw_retired_key(tmp_path):
+    from mkcrew import templates
+    assert templates.RETIRED == {"lead-left-ide": "main-vertical"}
+    assert templates.resolve("lead-left-ide") == "main-vertical"
+    assert templates.resolve("tiled") == "tiled"
+    cfg = tmp_path / ".mkcrew" / "team.config"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(json.dumps({"layout": "lead-left-ide", "agents": []}), encoding="utf-8")
+    assert teamconfig.load_layout(tmp_path) == "lead-left-ide"

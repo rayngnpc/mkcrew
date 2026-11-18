@@ -15,3 +15,11 @@ def test_delete_removes_profile(tmp_path, monkeypatch):
     profiles.save("temp", {"count": 2, "layout": "tiled", "providers": []})
     profiles.delete("temp")
     assert "temp" not in [p["name"] for p in profiles.list_profiles()]
+
+
+def test_load_and_list_resolve_retired_layout(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    profiles.save("legacy", {"count": 3, "layout": "lead-left-ide", "providers": []})
+    assert profiles.load("legacy")["layout"] == "main-vertical"
+    listed = next(p for p in profiles.list_profiles() if p["name"] == "legacy")
+    assert listed["layout"] == "main-vertical"
